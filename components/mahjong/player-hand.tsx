@@ -184,24 +184,24 @@ export function TileDropzone({
       )}
     >
       {counter ? (
-        <p className="mb-1.5 text-xs font-medium text-slate-400 tabular-nums">
+        <p className="mb-1.5 font-mono text-xs font-medium tabular-nums text-muted-foreground">
           {counter.current}/{counter.max}
         </p>
       ) : null}
       <div
         ref={setNodeRef}
         className={cn(
-          "relative flex w-full flex-col rounded-xl border-2 border-dashed transition-colors",
+          "relative flex w-full flex-col rounded-none border-2 border-dashed transition-colors",
           minHeightClass,
           isTable
-            ? "border-emerald-400/25 bg-gradient-to-b from-emerald-900/30 via-emerald-950/20 to-slate-950/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_28px_rgba(16,185,129,0.08),0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+            ? "border-jade-ink/50 bg-card shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--jade-ink)_12%,transparent),4px_4px_0_0_var(--jade-ink)]"
             : undefined,
           isOver
             ? isTable
-              ? "border-emerald-400/70 bg-emerald-950/30"
+              ? "border-jade-accent bg-jade-accent/10"
               : "border-primary bg-primary/5"
             : isBonus
-              ? "border-amber-400/60 bg-amber-50/60 dark:border-amber-400/30 dark:bg-amber-950/20"
+              ? "border-jade-gold/70 bg-[color-mix(in_srgb,var(--jade-gold)_12%,var(--bg-card))]"
               : isTable
                 ? undefined
                 : "border-border bg-muted/40",
@@ -245,7 +245,7 @@ export function TileDropzone({
               <p
                 className={cn(
                   "text-sm font-medium",
-                  isTable ? "text-slate-300" : "text-muted-foreground",
+                  isTable ? "font-serif text-jade-ink" : "text-muted-foreground",
                 )}
               >
                 {emptyTitle}
@@ -254,7 +254,7 @@ export function TileDropzone({
                 <p
                   className={cn(
                     "text-xs",
-                    isTable ? "text-slate-500" : "text-muted-foreground",
+                    isTable ? "text-muted-foreground" : "text-muted-foreground",
                   )}
                 >
                   {emptyHint}

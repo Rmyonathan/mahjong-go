@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum BoardTier {
+  beginner
+  advanced
+  mcr
+}
+
+enum FormResult {
+  W
+  L
+  D
+}
+
+enum WinMethod {
+  self_draw
+  discard
+}
+
+enum SessionStatus {
+  finished
+  live
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(MEMBER)
+  playerId     String?  @unique
+  player       Player?  @relation(fields: [playerId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Player {
+  id                 String   @id
+  name               String
+  nickname           String
+  initials           String
+  city               String
+  district           String
+  house              String
+  experienceLevelId  String
+  memberSince        DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user               User?
+  standings          BoardStanding[]
+  wonSessions        GameSession[]   @relation("SessionWinner")
+  sessionSeats       SessionSeat[]
+  sessionStandings   SessionStanding[]
+  wonHands           Hand[]          @relation("HandWinner")
+  dealtHands         Hand[]          @relation("HandDealtBy")
+  handDeltas         HandDelta[]
+}
+
+model Season {
+  id              String   @id
+  label           String
+  rangeLabel      String
+  sessionsPlayed  Int
+  gamesPlayed     Int
+  hoursAtTable    Float
+  biggestHandPts  Int
+  biggestHandCombo String
+  biggestHandPlayerId String
+  topComboName    String
+  topComboCount   Int
+  hotStreakPlayerId String
+  hotStreak       Int
+  selfDrawWins    Int
+  discardWins     Int
+  isActive        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  standings       BoardStanding[]
+  sessions        GameSession[]
+}
+
+model BoardStanding {
+  id           String    @id @default(cuid())
+  seasonId     String
+  season       Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId     String
+  player       Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  rank         Int
+  board        BoardTier
+  points       Int
+  wins         Int
+  games        Int
+  winRate      Float
+  ptsPerWin    Int
+  bonus        Int
+  pen          Int
+  biggestHand  Int
+  form         FormResult[]
+  streak       Int
+  selfDraw     Int
+  discardWins  Int
+
+  @@unique([seasonId, playerId])
+  @@index([seasonId, board, rank])
+}
+
+model GameSession {
+  id               String        @id
+  seasonId         String
+  season           Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  title            String
+  venueName        String
+  district         String
+  startedAt        DateTime
+  endedAt          DateTime
+  status           SessionStatus @default(finished)
+  seats            Int           @default(4)
+  games            Int
+  handsWon         Int
+  draws            Int
+  biggestHand      Int
+  durationMinutes  Int
+  winnerId         String
+  winner           Player        @relation("SessionWinner", fields: [winnerId], references: [id])
+  selfDrawWins     Int
+  discardWins      Int
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  seatPlayers      SessionSeat[]
+  standings        SessionStanding[]
+  hands            Hand[]
+  highlights       SessionHighlight?
+  claimedCombos    ClaimedCombo[]
+}
+
+model SessionSeat {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  seatOrder Int
+
+  @@unique([sessionId, playerId])
+  @@unique([sessionId, seatOrder])
+}
+
+model SessionStanding {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  rank      Int
+  net       Int
+  wins      Int
+  selfDraw  Int
+  dealtIn   Int
+  form      FormResult[]
+
+  @@unique([sessionId, playerId])
+}
+
+model SessionHighlight {
+  id                    String      @id @default(cuid())
+  sessionId             String      @unique
+  session               GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  biggestHandPlayerId   String
+  biggestHandPoints     Int
+  biggestHandCombo      String
+  biggestPayoutPlayerId String
+  biggestPayoutPoints   Int
+  mostWinsPlayerId      String
+  mostWins              Int
+  longestDealPlayerId   String
+  longestDealHands      Int
+  mostDealtInPlayerId   String
+  mostDealtIn           Int
+}
+
+model ClaimedCombo {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  label     String
+  count     Int
+
+  @@index([sessionId])
+}
+
+model Hand {
+  id             String     @id
+  sessionId      String
+  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  handNo         Int
+  winnerId       String
+  winner         Player     @relation("HandWinner", fields: [winnerId], references: [id])
+  method         WinMethod
+  dealtById      String?
+  dealtBy        Player?    @relation("HandDealtBy", fields: [dealtById], references: [id])
+  tileIds        String[]
+  winningTileId  String
+  bonusTileIds   String[]
+  combos         HandCombo[]
+  deltas         HandDelta[]
+
+  @@unique([sessionId, handNo])
+}
+
+model HandCombo {
+  id     String @id @default(cuid())
+  handId String
+  hand   Hand   @relation(fields: [handId], references: [id], onDelete: Cascade)
+  label  String
+  fan    Int
+}
+
+model HandDelta {
+  id       String @id @default(cuid())
+  handId   String
+  hand     Hand   @relation(fields: [handId], references: [id], onDelete: Cascade)
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  delta    Int
+
+  @@unique([handId, playerId])
+}

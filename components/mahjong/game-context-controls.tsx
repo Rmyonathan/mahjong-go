@@ -33,8 +33,8 @@ export function GameContextControls({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-end gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 p-3 backdrop-blur-sm",
-        compact && "gap-2 rounded-lg p-2",
+        "scan-panel flex flex-wrap items-end gap-3 rounded-none p-3",
+        compact && "gap-2 p-2",
         className,
       )}
     >
@@ -44,7 +44,12 @@ export function GameContextControls({
           compact && "min-w-[5.5rem] gap-1",
         )}
       >
-        <span className={cn("text-xs text-slate-400", compact && "text-[10px]")}>
+        <span
+          className={cn(
+            "font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground",
+            compact && "text-[9px]",
+          )}
+        >
           Angin Kursi
         </span>
         <Select
@@ -57,7 +62,7 @@ export function GameContextControls({
         >
           <SelectTrigger
             className={cn(
-              "w-full touch-manipulation border-slate-600 bg-slate-950 text-slate-100",
+              "w-full touch-manipulation rounded-none border-[2px] border-jade-ink bg-parchment text-jade-ink",
               compact && "h-8 text-xs",
             )}
           >
@@ -79,7 +84,12 @@ export function GameContextControls({
           compact && "min-w-[5.5rem] gap-1",
         )}
       >
-        <span className={cn("text-xs text-slate-400", compact && "text-[10px]")}>
+        <span
+          className={cn(
+            "font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground",
+            compact && "text-[9px]",
+          )}
+        >
           Angin Ronde
         </span>
         <Select
@@ -92,7 +102,7 @@ export function GameContextControls({
         >
           <SelectTrigger
             className={cn(
-              "w-full touch-manipulation border-slate-600 bg-slate-950 text-slate-100",
+              "w-full touch-manipulation rounded-none border-[2px] border-jade-ink bg-parchment text-jade-ink",
               compact && "h-8 text-xs",
             )}
           >

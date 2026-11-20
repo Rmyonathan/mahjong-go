@@ -353,7 +353,7 @@ export function CalculatorWorkspace() {
         disabled={mainHand.length < 2}
         onClick={sortHand}
         className={cn(
-          "border-slate-600/60 bg-slate-900/80 text-slate-200 backdrop-blur-sm hover:bg-slate-800",
+          "border-[2px] border-jade-ink bg-card text-jade-ink shadow-[3px_3px_0_0_var(--jade-ink)] hover:bg-muted",
           compact && "touch-manipulation",
         )}
       >
@@ -367,7 +367,7 @@ export function CalculatorWorkspace() {
         disabled={isEmpty}
         onClick={clearHand}
         className={cn(
-          "bg-red-950/80 backdrop-blur-sm hover:bg-red-900",
+          "border-[2px] border-jade-ink bg-jade-red text-parchment shadow-[3px_3px_0_0_var(--jade-ink)] hover:bg-jade-red/90",
           compact && "touch-manipulation",
         )}
       >
@@ -399,8 +399,8 @@ export function CalculatorWorkspace() {
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveTile(null)}
       >
-        <div className="relative flex h-[calc(100dvh-3.5rem)] w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
-        <div className="fixed left-4 top-4 z-40">
+        <div className="scan-desk relative flex h-[calc(100dvh-4.5rem)] w-full flex-col overflow-hidden">
+        <div className="fixed left-4 top-20 z-40 lg:top-4">
           <GameContextControls
             context={gameContext}
             onChange={setGameContext}
@@ -468,9 +468,8 @@ export function CalculatorWorkspace() {
             type="button"
             onClick={handleCalculateWin}
             className={cn(
-              "fixed bottom-44 left-1/2 z-50 -translate-x-1/2 gap-2 rounded-full px-8 py-4 text-lg font-bold shadow-2xl",
-              "border border-amber-400/60 bg-gradient-to-r from-amber-600 to-emerald-600 text-white",
-              "hover:from-amber-500 hover:to-emerald-500 hover:shadow-amber-500/40",
+              "scan-cta fixed bottom-44 left-1/2 z-50 -translate-x-1/2 gap-2 rounded-none px-8 py-4 font-mono text-sm uppercase tracking-[0.14em]",
+              "hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none",
               "animate-in fade-in zoom-in-95 duration-300",
             )}
           >
@@ -489,9 +488,8 @@ export function CalculatorWorkspace() {
                 : setAnalysisOpen(true)
             }
             className={cn(
-              "fixed right-8 top-1/2 z-50 -translate-y-1/2 gap-2 rounded-full px-6 py-4 text-lg font-bold shadow-2xl",
-              "border border-blue-400/50 bg-gradient-to-r from-blue-700 to-violet-700 text-white",
-              "hover:from-blue-600 hover:to-violet-600 hover:shadow-blue-500/40",
+              "scan-cta-accent fixed right-8 top-1/2 z-50 -translate-y-1/2 gap-2 rounded-none px-6 py-4 font-mono text-sm uppercase tracking-[0.14em]",
+              "hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none",
               "disabled:opacity-40",
             )}
           >
@@ -520,13 +518,13 @@ export function CalculatorWorkspace() {
   }
 
   return (
-    <div className="relative flex min-h-[100dvh] w-full flex-col bg-slate-950 text-slate-100">
-      <header className="relative z-20 flex shrink-0 touch-manipulation items-center justify-between gap-2 border-b border-slate-800/80 bg-slate-950 px-3 py-2">
+    <div className="scan-desk relative flex min-h-[100dvh] w-full flex-col">
+      <header className="relative z-20 flex shrink-0 touch-manipulation items-center justify-between gap-2 border-b-[2px] border-jade-ink bg-card px-3 py-2">
         <GameContextControls
           compact
           context={gameContext}
           onChange={setGameContext}
-          className="border-0 bg-transparent p-0 backdrop-blur-none"
+          className="border-0 bg-transparent p-0 shadow-none backdrop-blur-none"
         />
         <div className="flex shrink-0 touch-manipulation items-center gap-1">
           {isWinningForTarget ? (
@@ -535,7 +533,7 @@ export function CalculatorWorkspace() {
               size="icon-sm"
               onClick={handleCalculateWin}
               aria-label="Hitung menang"
-              className="touch-manipulation rounded-full border border-amber-400/60 bg-gradient-to-r from-amber-600 to-emerald-600 text-white"
+              className="scan-cta touch-manipulation rounded-none"
             >
               <Trophy className="size-4" />
             </Button>
@@ -546,7 +544,7 @@ export function CalculatorWorkspace() {
             disabled={mainHand.length === 0}
             onClick={() => setAnalysisOpen(true)}
             aria-label="Strategi AI"
-            className="touch-manipulation rounded-full border border-blue-400/50 bg-gradient-to-r from-blue-700 to-violet-700 text-white disabled:opacity-40"
+            className="scan-cta-accent touch-manipulation rounded-none disabled:opacity-40"
           >
             <span aria-hidden className="text-sm">
               🧠
@@ -619,14 +617,16 @@ export function CalculatorWorkspace() {
         </DndContext>
 
         {trackedTargets.length > 0 ? (
-          <section className="shrink-0 border-t border-blue-500/20 bg-slate-950 px-3 py-3 pb-4">
+          <section className="shrink-0 border-t-[2px] border-jade-ink bg-card px-3 py-3 pb-4">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-100">Pelatih AI</h2>
+              <h2 className="font-mono text-xs uppercase tracking-[0.16em] text-jade-ink">
+                Pelatih AI
+              </h2>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="touch-manipulation h-8 border-blue-500/30 bg-slate-900 text-xs text-slate-200"
+                className="touch-manipulation h-8 rounded-none border-[2px] border-jade-ink bg-parchment font-mono text-[10px] uppercase tracking-[0.12em] text-jade-ink"
                 onClick={() => setAnalysisOpen(true)}
               >
                 Ubah Strategi
@@ -637,7 +637,7 @@ export function CalculatorWorkspace() {
                 targets={trackedTargets}
                 activeTarget={activeTarget}
                 onActiveTargetChange={handleActiveTargetChange}
-                className="border-blue-500/20 bg-slate-900/50"
+                className="rounded-none border-[2px] border-jade-ink bg-parchment"
               />
               <AiSuggestions
                 variant="glass"

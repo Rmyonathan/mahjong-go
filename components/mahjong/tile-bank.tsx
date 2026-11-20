@@ -92,7 +92,7 @@ export function TileBank({
             <h3
               className={cn(
                 "font-semibold",
-                isTable ? "text-slate-200" : undefined,
+                isTable ? "font-mono uppercase tracking-[0.12em] text-jade-ink" : undefined,
                 isCompact ? "text-[10px]" : "text-sm",
               )}
             >
@@ -102,7 +102,7 @@ export function TileBank({
               <p
                 className={cn(
                   "text-xs",
-                  isTable ? "text-slate-500" : "text-muted-foreground",
+                  isTable ? "text-muted-foreground" : "text-muted-foreground",
                 )}
               >
                 {group.description}
@@ -133,10 +133,12 @@ export function TileBank({
 
   if (isTable && isCompact) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-slate-700/50 px-2 py-1.5">
-          <h2 className="text-[11px] font-semibold text-slate-100">Bank Ubin</h2>
-          <p className="text-[9px] text-slate-500">Ketuk ubin untuk menambah</p>
+      <div className="scan-panel flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="shrink-0 border-b-[2px] border-jade-ink px-2 py-1.5">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-jade-ink">
+            Bank Scan
+          </h2>
+          <p className="text-[9px] text-muted-foreground">Ketuk ubin untuk menambah</p>
         </div>
         <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden px-1.5 py-2">
           {content}
@@ -147,17 +149,20 @@ export function TileBank({
 
   if (isTable) {
     return (
-      <div className="w-full max-w-6xl rounded-2xl border border-slate-700/50 bg-slate-900/40 p-6 shadow-xl backdrop-blur-sm">
-        <div className="mb-5 flex items-center justify-between">
+      <div className="scan-panel w-full max-w-6xl rounded-none p-6">
+        <div className="mb-5 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-100">Bank Ubin</h2>
-            <p className="text-xs text-slate-400">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Scan · HK Old Style
+            </p>
+            <h2 className="mt-1 font-serif text-2xl text-jade-ink">Bank Ubin</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               Seret atau ketuk ubin ke tangan Anda
             </p>
           </div>
           <Badge
             variant="secondary"
-            className="border-slate-600/50 bg-slate-800/80 text-slate-300"
+            className="rounded-none border-[2px] border-jade-ink bg-parchment font-mono text-[10px] uppercase tracking-[0.12em] text-jade-ink"
           >
             144 ubin
           </Badge>
