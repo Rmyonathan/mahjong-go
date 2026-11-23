@@ -1,30 +1,25 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { Share2 } from "lucide-react"
 
 import { FormSquares } from "@/components/jade/form-squares"
 import { TileStrip } from "@/components/jade/tile-strip"
-import {
-  CameraScanModal,
-  type ConfirmedScanHand,
-} from "@/components/session/camera-scan-modal"
-import { ManualHandModal } from "@/components/session/manual-hand-modal"
+import { HandLogModal } from "@/components/session/hand-log-modal"
+import type { ConfirmedScanHand } from "@/components/session/camera-scan-modal"
+import { SessionNewspaperButton } from "@/components/share/session-newspaper"
+import { ShareWinCardButton } from "@/components/share/win-story-card"
 import {
   formatPlainPoints,
   formatSignedPoints,
 } from "@/lib/mock/jade-board"
+import { computeSessionAwards } from "@/lib/share/awards"
 import {
   WIND_META,
-  applyDrawHand,
-  applyHandToSession,
-  endLiveSession,
   formatElapsed,
-  loadLiveSession,
   roundBadge,
-  saveLiveSession,
   type LiveHand,
   type LiveSession,
 } from "@/lib/session/live-demo"
@@ -38,22 +33,68 @@ const RACE_COLORS = [
 ]
 
 export default function LiveSessionPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            Loading table…
+          </p>
+        </main>
+      }
+    >
+      <LiveSessionInner />
+    </Suspense>
+  )
+}
+
+function LiveSessionInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const sessionId = searchParams.get("id")
   const [session, setSession] = useState<LiveSession | null>(null)
   const [ready, setReady] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
-  const [scanOpen, setScanOpen] = useState(false)
-  const [manualOpen, setManualOpen] = useState(false)
+  const [handLogOpen, setHandLogOpen] = useState(false)
+  const [isPro, setIsPro] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [isCaptain, setIsCaptain] = useState(false)
+
+  const refresh = useCallback(async (id: string) => {
+    const response = await fetch(`/api/sessions/${id}`)
+    const data = (await response.json()) as {
+      error?: string
+      session?: LiveSession & { captainUserId?: string }
+      viewer?: { id: string; isCaptain?: boolean } | null
+    }
+    if (response.status === 401) {
+      router.replace(
+        `/login?next=${encodeURIComponent(`/session/live?id=${id}`)}`,
+      )
+      throw new Error("Login required")
+    }
+    if (!response.ok || !data.session) {
+      throw new Error(data.error ?? "Session not found")
+    }
+    setSession(data.session)
+    setIsCaptain(Boolean(data.viewer?.isCaptain))
+    return data.session
+  }, [router])
 
   useEffect(() => {
-    const loaded = loadLiveSession()
-    if (!loaded) {
-      router.replace("/session/new")
+    if (!sessionId) {
+      router.replace("/session/new?mode=live")
       return
     }
-    setSession(loaded)
-    setReady(true)
-  }, [router])
+    void refresh(sessionId)
+      .then(() => setReady(true))
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : ""
+        if (message === "Login required") return
+        router.replace("/session/new?mode=live")
+      })
+  }, [sessionId, refresh, router])
 
   useEffect(() => {
     if (!session || session.status !== "live") return
@@ -65,38 +106,114 @@ export default function LiveSessionPage() {
     return () => window.clearInterval(id)
   }, [session])
 
-  function persist(next: LiveSession) {
-    setSession(next)
-    saveLiveSession(next)
+  useEffect(() => {
+    let cancelled = false
+    void fetch("/api/auth/me")
+      .then(async (response) => {
+        if (!response.ok) return
+        const data = (await response.json()) as {
+          user?: { isPro?: boolean; role?: string } | null
+        }
+        if (cancelled) return
+        setIsPro(Boolean(data.user?.isPro || data.user?.role === "ADMIN"))
+      })
+      .catch(() => {
+        if (!cancelled) setIsPro(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function postHand(hand: {
+    winnerSeatIndex: number
+    method: "self-draw" | "discard" | "draw"
+    dealtBySeatIndex: number | null
+    tileIds: string[]
+    winningTileId: string
+    combos: { label: string; fan: number }[]
+    points: number
+    deltas?: number[]
+    demoHandId?: string
+  }) {
+    if (!sessionId) return false
+    setBusy(true)
+    setActionError(null)
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/hands`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(hand),
+      })
+      const data = (await response.json()) as {
+        error?: string
+        session?: LiveSession
+      }
+      if (!response.ok || !data.session) {
+        setActionError(data.error ?? "Could not log hand")
+        return false
+      }
+      setSession(data.session)
+      setHandLogOpen(false)
+      return true
+    } catch {
+      setActionError("Network error logging hand")
+      return false
+    } finally {
+      setBusy(false)
+    }
   }
 
   function logConfirmed(hand: ConfirmedScanHand) {
-    if (!session) return
-    persist(
-      applyHandToSession(session, {
-        winnerSeatIndex: hand.winnerSeatIndex,
-        method: hand.method,
-        dealtBySeatIndex: hand.dealtBySeatIndex,
-        tileIds: hand.tileIds,
-        winningTileId: hand.winningTileId,
-        combos: hand.combos,
-        points: hand.points,
-        deltas: hand.deltas,
-        demoHandId: hand.demoHandId,
-      }),
-    )
-    setScanOpen(false)
-    setManualOpen(false)
+    void postHand({
+      winnerSeatIndex: hand.winnerSeatIndex,
+      method: hand.method,
+      dealtBySeatIndex: hand.dealtBySeatIndex,
+      tileIds: hand.tileIds,
+      winningTileId: hand.winningTileId,
+      combos: hand.combos,
+      points: hand.points,
+      deltas: hand.deltas,
+      demoHandId: hand.demoHandId,
+    })
   }
 
   function onDraw() {
-    if (!session || session.status !== "live") return
-    persist(applyDrawHand(session))
+    if (!session || session.status !== "live" || busy) return
+    void postHand({
+      winnerSeatIndex: -1,
+      method: "draw",
+      dealtBySeatIndex: null,
+      tileIds: [],
+      winningTileId: "",
+      combos: [{ label: "Draw", fan: 0 }],
+      points: 0,
+      deltas: session.seats.map(() => 0),
+    })
   }
 
-  function onEnd() {
-    if (!session) return
-    persist(endLiveSession(session))
+  async function onEnd() {
+    if (!sessionId || busy) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/finish`, {
+        method: "POST",
+      })
+      const data = (await response.json()) as {
+        error?: string
+        session?: LiveSession
+      }
+      if (!response.ok || !data.session) {
+        setActionError(data.error ?? "Could not end session")
+        return
+      }
+      setSession(data.session)
+    } catch {
+      setActionError("Network error ending session")
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function shareStandings() {
@@ -144,7 +261,12 @@ export default function LiveSessionPage() {
   }
 
   if (session.status === "finished") {
-    return <FinalStandings session={session} onShare={shareStandings} />
+    return (
+      <FinalStandings
+        session={session}
+        onShare={shareStandings}
+      />
+    )
   }
 
   return (
@@ -153,7 +275,7 @@ export default function LiveSessionPage() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="inline-flex items-center gap-2 border-[2px] border-jade-accent bg-card px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-jade-accent">
             <span className="jade-live-pulse size-2 rounded-full bg-jade-accent" />
-            Live
+            Live · Postgres
           </span>
           <span className="font-mono text-sm tabular-nums">
             {formatElapsed(elapsedMs)}
@@ -172,13 +294,20 @@ export default function LiveSessionPage() {
           <p className="mr-auto font-serif text-xl sm:mr-2">{session.title}</p>
           <button
             type="button"
-            onClick={onEnd}
-            className="border-[2px] border-jade-red px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-red"
+            disabled={busy || !isCaptain}
+            onClick={() => void onEnd()}
+            className="border-[2px] border-jade-red px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-red disabled:opacity-40"
           >
             End session
           </button>
         </div>
       </div>
+
+      {actionError ? (
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-red">
+          {actionError}
+        </p>
+      ) : null}
 
       <section
         className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -235,31 +364,46 @@ export default function LiveSessionPage() {
         className="jade-card-accent mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center"
         aria-label="Primary actions"
       >
+        <div className="relative inline-flex min-w-[16rem] flex-1 sm:flex-none">
+          <button
+            type="button"
+            disabled={busy || !isCaptain}
+            onClick={() => setHandLogOpen(true)}
+            className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
+          >
+            🀄 Log hand · HKOS calculator
+          </button>
+        </div>
+        <div className="relative inline-flex">
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-12 cursor-not-allowed items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] opacity-50"
+          >
+            📷 Camera scan
+          </button>
+          <span className="pointer-events-none absolute -right-1 -top-2 border-[2px] border-jade-ink bg-jade-gold px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-jade-ink shadow-[2px_2px_0_0_var(--jade-ink)]">
+            Coming soon
+          </span>
+        </div>
         <button
           type="button"
-          onClick={() => setScanOpen(true)}
-          className="scan-cta-accent inline-flex h-12 min-w-[16rem] flex-1 items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em] sm:flex-none"
-        >
-          📷 Scan winning hand (AI demo)
-        </button>
-        <button
-          type="button"
-          onClick={() => setManualOpen(true)}
-          className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
-        >
-          + Log hand manually
-        </button>
-        <button
-          type="button"
+          disabled={busy || !isCaptain}
           onClick={onDraw}
-          className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+          className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
           Draw / no winner
         </button>
       </section>
 
+      {!isCaptain ? (
+        <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          View only — table captain logs hands
+        </p>
+      ) : null}
+
       <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        <LiveGameLog session={session} />
+        <LiveGameLog session={session} isPro={isPro} />
         <aside className="flex flex-col gap-4">
           <LiveScoreRace session={session} />
           <div className="jade-card p-4">
@@ -290,23 +434,23 @@ export default function LiveSessionPage() {
         </aside>
       </div>
 
-      <CameraScanModal
-        open={scanOpen}
+      <HandLogModal
+        open={handLogOpen}
         seats={session.seats}
-        onClose={() => setScanOpen(false)}
-        onConfirm={logConfirmed}
-      />
-      <ManualHandModal
-        open={manualOpen}
-        seats={session.seats}
-        onClose={() => setManualOpen(false)}
+        onClose={() => setHandLogOpen(false)}
         onConfirm={logConfirmed}
       />
     </main>
   )
 }
 
-function LiveGameLog({ session }: { session: LiveSession }) {
+function LiveGameLog({
+  session,
+  isPro,
+}: {
+  session: LiveSession
+  isPro: boolean
+}) {
   return (
     <section className="jade-card overflow-hidden">
       <div className="border-b-[2px] border-jade-ink px-4 py-3">
@@ -317,7 +461,7 @@ function LiveGameLog({ session }: { session: LiveSession }) {
       </div>
       {session.hands.length === 0 ? (
         <p className="px-4 py-8 text-sm text-muted-foreground">
-          No hands yet. Scan a winning hand or log one manually.
+          No hands yet. Open the HKOS calculator to log a win.
         </p>
       ) : (
         <ol className="divide-y divide-jade-ink/30">
@@ -353,16 +497,33 @@ function LiveGameLog({ session }: { session: LiveSession }) {
                       ))}
                     </div>
                   </div>
-                  <p
-                    className={cn(
-                      "font-mono text-sm",
-                      hand.points > 0 && "text-jade-accent",
-                    )}
-                  >
-                    {hand.points > 0
-                      ? formatSignedPoints(hand.points)
-                      : "0"}
-                  </p>
+                  <div className="flex flex-col items-end gap-2">
+                    <p
+                      className={cn(
+                        "font-mono text-sm",
+                        hand.points > 0 && "text-jade-accent",
+                      )}
+                    >
+                      {hand.points > 0
+                        ? formatSignedPoints(hand.points)
+                        : "0"}
+                    </p>
+                    {winner ? (
+                      <ShareWinCardButton
+                        isPro={isPro}
+                        hand={{
+                          sessionTitle: session.title,
+                          handNo: hand.handNo,
+                          winnerName: winner.name,
+                          method: hand.method,
+                          points: hand.points,
+                          combos: hand.combos,
+                          tileIds: hand.tileIds,
+                          winningTileId: hand.winningTileId,
+                        }}
+                      />
+                    ) : null}
+                  </div>
                 </div>
                 {hand.tileIds.length > 0 ? (
                   <div className="mt-3">
@@ -486,6 +647,7 @@ function FinalStandings({
   const ranked = [...session.seats]
     .map((seat, index) => ({ seat, index }))
     .sort((a, b) => b.seat.net - a.seat.net)
+  const awards = computeSessionAwards(session)
 
   const placeLabel = (place: number) =>
     place === 1 ? "1st" : place === 2 ? "2nd" : place === 3 ? "3rd" : "4th"
@@ -493,13 +655,31 @@ function FinalStandings({
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
       <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-        Session closed
+        Session closed · Leaderboard updated
       </p>
       <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] sm:text-6xl">
         Final standings
       </h1>
       <p className="mt-3 font-serif text-2xl text-jade-accent">{session.title}</p>
       <div className="jade-divider mt-6" />
+
+      {awards.length > 0 ? (
+        <section className="mt-8 grid gap-3 sm:grid-cols-3">
+          {awards.map((award) => (
+            <article key={award.id} className="jade-card p-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-gold">
+                {award.title}
+              </p>
+              <p className="mt-2 font-serif text-2xl leading-none">
+                {award.playerName}
+              </p>
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                {award.detail}
+              </p>
+            </article>
+          ))}
+        </section>
+      ) : null}
 
       <ol className="mt-8 grid gap-4 sm:grid-cols-2">
         {ranked.map(({ seat }, place) => (
@@ -546,13 +726,14 @@ function FinalStandings({
       </ol>
 
       <div className="mt-8 flex flex-wrap gap-3">
+        <SessionNewspaperButton session={session} />
         <button
           type="button"
           onClick={onShare}
-          className="scan-cta-accent inline-flex h-11 items-center gap-2 rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+          className="inline-flex h-11 items-center gap-2 border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
         >
           <Share2 className="size-4" />
-          Share standings card
+          Share text standings
         </button>
         <Link
           href="/leaderboard"
@@ -561,7 +742,7 @@ function FinalStandings({
           Back to leaderboard
         </Link>
         <Link
-          href="/session/new"
+          href="/session/new?mode=live"
           className="inline-flex h-11 items-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
         >
           New session

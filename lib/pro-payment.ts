@@ -1,0 +1,57 @@
+import { formatQrisIdr, QRIS_AMOUNT } from "@/lib/qris"
+
+/** Week-1 launch: dynamic QRIS + WhatsApp until Midtrans/Xendit KYB clears. */
+
+export const PRO_AMOUNT_IDR = QRIS_AMOUNT.PRO
+export const SCAN_PACK_AMOUNT_IDR = QRIS_AMOUNT.SCAN_PACK
+export const BOOKING_DEFAULT_AMOUNT_IDR = QRIS_AMOUNT.BOOKING_DEFAULT
+
+export const PRO_PRICE_LABEL = "Rp 29k/mo"
+
+/** Fallback static image if dynamic render fails. */
+export const QRIS_IMAGE_SRC = "/QRIS.jpeg"
+
+// EDIT HERE — club WhatsApp for payment confirmation
+const WHATSAPP_NUMBER =
+  process.env.NEXT_PUBLIC_WHATSAPP_PRO ?? "6285121341608"
+
+function waUrl(text: string) {
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`
+}
+
+export function whatsAppProConfirmUrl(accountName?: string) {
+  const name = accountName?.trim() || "(isi nama akun)"
+  return waUrl(
+    `Halo Jade Mahjong — saya sudah transfer Pro ${formatQrisIdr(PRO_AMOUNT_IDR)} via QRIS. Mohon aktifkan Pro 30 hari. Nama akun: ${name}`,
+  )
+}
+
+export function whatsAppBookingConfirmUrl(options: {
+  accountName?: string
+  meetTitle?: string
+  amountIdr: number
+}) {
+  const name = options.accountName?.trim() || "(isi nama akun)"
+  const meet = options.meetTitle?.trim() || "meja"
+  return waUrl(
+    `Halo Jade Mahjong — saya sudah transfer booking ${formatQrisIdr(options.amountIdr)} via QRIS untuk ${meet}. Nama akun: ${name}`,
+  )
+}
+
+export function whatsAppScanPackConfirmUrl(accountName?: string) {
+  const name = accountName?.trim() || "(isi nama akun)"
+  return waUrl(
+    `Halo Jade Mahjong — saya sudah transfer Scan Pack ${formatQrisIdr(SCAN_PACK_AMOUNT_IDR)} via QRIS. Nama akun: ${name}`,
+  )
+}
+
+export function whatsAppCoachingConfirmUrl(options: {
+  accountName?: string
+  sessionLabel?: string
+}) {
+  const name = options.accountName?.trim() || "(isi nama akun)"
+  const session = options.sessionLabel?.trim() || "saved session"
+  return waUrl(
+    `Halo Jade Mahjong — saya mau book Hand Audit 45 menit. Akun: ${name}. Session: ${session}.`,
+  )
+}

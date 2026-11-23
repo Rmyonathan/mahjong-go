@@ -108,3 +108,98 @@ export async function loginWithCredentials(email: string, password: string) {
   await setSessionCookie(token)
   return sessionUser
 }
+
+function normalizeEmailOrUsername(value: string) {
+  const raw = value.trim().toLowerCase()
+  if (!raw) return ""
+  if (raw.includes("@")) return raw
+  const handle = raw.replace(/[^a-z0-9._-]/g, "")
+  return handle ? `${handle}@jade.local` : ""
+}
+
+function slugFromName(name: string) {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+  return slug || "player"
+}
+
+function initialsFromName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "JM"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase()
+}
+
+/** Self-serve signup: FREE member + Player at 1400 skill / Level 1 (Pemula). */
+export async function registerMember(input: {
+  name: string
+  emailOrUsername: string
+  password: string
+}) {
+  const name = input.name.trim()
+  const email = normalizeEmailOrUsername(input.emailOrUsername)
+  const password = input.password
+  if (!name || !email || password.length < 6) {
+    throw new Error("Name, email/username, and password (6+ chars) required")
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) throw new Error("Email or username already registered")
+
+  const nickname = name.split(/\s+/)[0] ?? name
+  const baseSlug = slugFromName(name)
+  let playerId = `${baseSlug}-${Date.now().toString(36)}`
+  // Extremely unlikely collision; keep ids readable for profile URLs
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const taken = await prisma.player.findUnique({ where: { id: playerId } })
+    if (!taken) break
+    playerId = `${baseSlug}-${Date.now().toString(36)}${attempt}`
+  }
+
+  const passwordHash = await hashPassword(password)
+
+  const user = await prisma.$transaction(async (tx) => {
+    await tx.player.create({
+      data: {
+        id: playerId,
+        name,
+        nickname,
+        initials: initialsFromName(name),
+        city: "Bandar Lampung",
+        district: "Walk-in",
+        house: "Jade Mahjong",
+        // Level 1 — Pemula
+        experienceLevelId: "pemula",
+        memberSince: new Date(),
+        experienceXp: 0,
+        // EDIT HERE — starting skill rating for new members
+        skillRating: 1400,
+      },
+    })
+
+    return tx.user.create({
+      data: {
+        email,
+        name,
+        passwordHash,
+        role: "MEMBER",
+        membershipTier: "FREE",
+        playerId,
+      },
+    })
+  })
+
+  const sessionUser: SessionUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    playerId: user.playerId,
+  }
+  const token = await createSessionToken(sessionUser)
+  await setSessionCookie(token)
+  return sessionUser
+}

@@ -12,6 +12,35 @@ enum UserRole {
   MEMBER
 }
 
+enum MembershipTier {
+  FREE
+  PRO
+}
+
+enum MeetBoardType {
+  BEGINNER
+  ADVANCED
+  MCR
+  GUIDED
+}
+
+enum MeetStatus {
+  OPEN
+  FULL
+  COMPLETED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  WAITLIST
+  CANCELLED
+}
+
+enum PaymentMethod {
+  QRIS
+  VENUE
+}
+
 enum BoardTier {
   beginner
   advanced
@@ -24,219 +53,268 @@ enum FormResult {
   D
 }
 
-enum WinMethod {
-  self_draw
-  discard
+enum SessionStatus {
+  LIVE
+  FINISHED
 }
 
-enum SessionStatus {
-  finished
-  live
+enum SeatWind {
+  EAST
+  SOUTH
+  WEST
+  NORTH
+}
+
+enum HandWinMethod {
+  SELF_DRAW
+  DISCARD
+  DRAW
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  role         UserRole @default(MEMBER)
-  playerId     String?  @unique
-  player       Player?  @relation(fields: [playerId], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String         @id @default(cuid())
+  email          String         @unique
+  name           String
+  passwordHash   String
+  role           UserRole       @default(MEMBER)
+  membershipTier MembershipTier @default(FREE)
+  /// When set, PRO access ends after this instant (manual QRIS / admin grant).
+  proExpiresAt   DateTime?
+  playerId       String?        @unique
+  player         Player?        @relation(fields: [playerId], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  bookings            Booking[]
+  hostedMeets         Meet[]          @relation("MeetHost")
+  captainedSessions   GameSession[]   @relation("SessionCaptain")
+  sessionSeats        SessionSeat[]
+  puzzleVotes         PuzzleVote[]
+  coachingBookings    CoachingBooking[]
+  bountyClaims        BountyClaim[]
 }
 
 model Player {
-  id                 String   @id
-  name               String
-  nickname           String
-  initials           String
-  city               String
-  district           String
-  house              String
-  experienceLevelId  String
-  memberSince        DateTime
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id
+  name              String
+  nickname          String
+  initials          String
+  city              String
+  district          String
+  house             String
+  experienceLevelId String
+  memberSince       DateTime
+  /// Club experience points — updated when a LIVE session is finished
+  experienceXp      Int      @default(0)
+  /// Skill rating (ELO) — updated when a LIVE session is finished
+  skillRating       Int      @default(1500)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  user               User?
-  standings          BoardStanding[]
-  wonSessions        GameSession[]   @relation("SessionWinner")
-  sessionSeats       SessionSeat[]
-  sessionStandings   SessionStanding[]
-  wonHands           Hand[]          @relation("HandWinner")
-  dealtHands         Hand[]          @relation("HandDealtBy")
-  handDeltas         HandDelta[]
+  user       User?
+  standings  BoardStanding[]
 }
 
 model Season {
-  id              String   @id
-  label           String
-  rangeLabel      String
-  sessionsPlayed  Int
-  gamesPlayed     Int
-  hoursAtTable    Float
-  biggestHandPts  Int
-  biggestHandCombo String
+  id                  String   @id
+  label               String
+  rangeLabel          String
+  sessionsPlayed      Int
+  gamesPlayed         Int
+  hoursAtTable        Float
+  biggestHandPts      Int
+  biggestHandCombo    String
   biggestHandPlayerId String
-  topComboName    String
-  topComboCount   Int
-  hotStreakPlayerId String
-  hotStreak       Int
-  selfDrawWins    Int
-  discardWins     Int
-  isActive        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  topComboName        String
+  topComboCount       Int
+  hotStreakPlayerId   String
+  hotStreak           Int
+  selfDrawWins        Int
+  discardWins         Int
+  isActive            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  standings       BoardStanding[]
-  sessions        GameSession[]
+  standings BoardStanding[]
 }
 
 model BoardStanding {
-  id           String    @id @default(cuid())
-  seasonId     String
-  season       Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  playerId     String
-  player       Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  rank         Int
-  board        BoardTier
-  points       Int
-  wins         Int
-  games        Int
-  winRate      Float
-  ptsPerWin    Int
-  bonus        Int
-  pen          Int
-  biggestHand  Int
-  form         FormResult[]
-  streak       Int
-  selfDraw     Int
-  discardWins  Int
+  id          String       @id @default(cuid())
+  seasonId    String
+  season      Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId    String
+  player      Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  rank        Int
+  board       BoardTier
+  points      Int
+  wins        Int
+  games       Int
+  winRate     Float
+  ptsPerWin   Int
+  bonus       Int
+  pen         Int
+  biggestHand Int
+  form        FormResult[]
+  streak      Int
+  selfDraw    Int
+  discardWins Int
 
   @@unique([seasonId, playerId])
   @@index([seasonId, board, rank])
 }
 
 model GameSession {
-  id               String        @id
-  seasonId         String
-  season           Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  title            String
-  venueName        String
-  district         String
-  startedAt        DateTime
-  endedAt          DateTime
-  status           SessionStatus @default(finished)
-  seats            Int           @default(4)
-  games            Int
-  handsWon         Int
-  draws            Int
-  biggestHand      Int
-  durationMinutes  Int
-  winnerId         String
-  winner           Player        @relation("SessionWinner", fields: [winnerId], references: [id])
-  selfDrawWins     Int
-  discardWins      Int
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id            String         @id @default(cuid())
+  title         String
+  boardType     MeetBoardType
+  status        SessionStatus  @default(LIVE)
+  meetId        String?
+  meet          Meet?          @relation(fields: [meetId], references: [id], onDelete: SetNull)
+  captainUserId String
+  captain       User           @relation("SessionCaptain", fields: [captainUserId], references: [id])
+  startedAt     DateTime       @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  seatPlayers      SessionSeat[]
-  standings        SessionStanding[]
-  hands            Hand[]
-  highlights       SessionHighlight?
-  claimedCombos    ClaimedCombo[]
+  seats SessionSeat[]
+  hands HandRecord[]
+
+  @@index([status, startedAt])
+  @@index([meetId])
 }
 
 model SessionSeat {
-  id        String      @id @default(cuid())
-  sessionId String
-  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  playerId  String
-  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  seatOrder Int
+  id           String      @id @default(cuid())
+  sessionId    String
+  session      GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestName    String?
+  wind         SeatWind
+  seatOrder    Int
+  netPoints    Int         @default(0)
+  wins         Int         @default(0)
+  selfDraws    Int         @default(0)
+  dealtInCount Int         @default(0)
 
-  @@unique([sessionId, playerId])
+  wonHands   HandRecord[] @relation("HandWinnerSeat")
+  dealtHands HandRecord[] @relation("HandDealtInSeat")
+
+  @@unique([sessionId, wind])
   @@unique([sessionId, seatOrder])
+  @@index([userId])
 }
 
-model SessionStanding {
-  id        String      @id @default(cuid())
-  sessionId String
-  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  playerId  String
-  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  rank      Int
-  net       Int
-  wins      Int
-  selfDraw  Int
-  dealtIn   Int
-  form      FormResult[]
+model HandRecord {
+  id            String        @id @default(cuid())
+  sessionId     String
+  session       GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  handNumber    Int
+  winnerSeatId  String?
+  winnerSeat    SessionSeat?  @relation("HandWinnerSeat", fields: [winnerSeatId], references: [id], onDelete: SetNull)
+  dealtInSeatId String?
+  dealtInSeat   SessionSeat?  @relation("HandDealtInSeat", fields: [dealtInSeatId], references: [id], onDelete: SetNull)
+  winMethod     HandWinMethod
+  points        Int           @default(0)
+  combosJson    Json
+  tilesJson     Json
+  deltasJson    Json
+  createdAt     DateTime      @default(now())
 
-  @@unique([sessionId, playerId])
-}
-
-model SessionHighlight {
-  id                    String      @id @default(cuid())
-  sessionId             String      @unique
-  session               GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  biggestHandPlayerId   String
-  biggestHandPoints     Int
-  biggestHandCombo      String
-  biggestPayoutPlayerId String
-  biggestPayoutPoints   Int
-  mostWinsPlayerId      String
-  mostWins              Int
-  longestDealPlayerId   String
-  longestDealHands      Int
-  mostDealtInPlayerId   String
-  mostDealtIn           Int
-}
-
-model ClaimedCombo {
-  id        String      @id @default(cuid())
-  sessionId String
-  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  label     String
-  count     Int
-
+  @@unique([sessionId, handNumber])
   @@index([sessionId])
 }
 
-model Hand {
-  id             String     @id
-  sessionId      String
-  session        GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  handNo         Int
-  winnerId       String
-  winner         Player     @relation("HandWinner", fields: [winnerId], references: [id])
-  method         WinMethod
-  dealtById      String?
-  dealtBy        Player?    @relation("HandDealtBy", fields: [dealtById], references: [id])
-  tileIds        String[]
-  winningTileId  String
-  bonusTileIds   String[]
-  combos         HandCombo[]
-  deltas         HandDelta[]
+model Meet {
+  id                String        @id @default(cuid())
+  title             String
+  dateLabel         String
+  startTime         String
+  endTime           String
+  startsAt          DateTime
+  endsAt            DateTime
+  location          String
+  boardType         MeetBoardType
+  maxSeats          Int
+  tables            Int           @default(1)
+  feeIdr            Int
+  proEarlyBirdUntil DateTime?
+  proOnly           Boolean       @default(false)
+  status            MeetStatus    @default(OPEN)
+  hostId            String?
+  host              User?         @relation("MeetHost", fields: [hostId], references: [id])
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  @@unique([sessionId, handNo])
+  bookings Booking[]
+  sessions GameSession[]
+
+  @@index([startsAt, status])
 }
 
-model HandCombo {
-  id     String @id @default(cuid())
-  handId String
-  hand   Hand   @relation(fields: [handId], references: [id], onDelete: Cascade)
-  label  String
-  fan    Int
+model Booking {
+  id            String         @id @default(cuid())
+  meetId        String
+  meet          Meet           @relation(fields: [meetId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        BookingStatus  @default(CONFIRMED)
+  paymentMethod PaymentMethod?
+  seatNumber    Int?
+  checkInCode   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([meetId, userId])
+  @@index([meetId, status])
 }
 
-model HandDelta {
-  id       String @id @default(cuid())
-  handId   String
-  hand     Hand   @relation(fields: [handId], references: [id], onDelete: Cascade)
-  playerId String
-  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  delta    Int
+/// Daily WWYD vote — one discard pick per user per puzzle day.
+model PuzzleVote {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  puzzleId       String
+  discardTileId  String
+  createdAt      DateTime @default(now())
 
-  @@unique([handId, playerId])
+  @@unique([userId, puzzleId])
+  @@index([puzzleId])
+}
+
+enum CoachingBookingStatus {
+  PENDING
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+/// 1-on-1 hand audit / guided table with club coach (80/20 split offline).
+model CoachingBooking {
+  id          String                 @id @default(cuid())
+  userId      String
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId   String?
+  preferredAt DateTime?
+  notes       String                 @default("")
+  status      CoachingBookingStatus  @default(PENDING)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([userId, status])
+}
+
+/// Weekly bounty XP claim (idempotent per user + bounty key).
+model BountyClaim {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bountyId   String
+  weekKey    String
+  xpAwarded  Int
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, bountyId])
+  @@index([userId, weekKey])
 }

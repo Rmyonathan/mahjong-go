@@ -3,12 +3,14 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { UserRound } from "lucide-react"
 
 interface AuthUser {
   id: string
   email: string
   name: string
   role: "ADMIN" | "MEMBER"
+  playerId?: string | null
 }
 
 export function AuthControls({ compact = false }: { compact?: boolean }) {
@@ -42,7 +44,17 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" })
     setUser(null)
-    router.push("/login")
+    try {
+      window.sessionStorage.removeItem("jade_pending_hand")
+      window.localStorage.removeItem("jade_live_session")
+    } catch {
+      /* ignore */
+    }
+    if (pathname.startsWith("/session")) {
+      router.replace("/login")
+    } else {
+      router.push("/login")
+    }
     router.refresh()
   }
 
@@ -69,6 +81,8 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
     )
   }
 
+  const profileHref = user.playerId ? `/players/${user.playerId}` : "/me"
+
   return (
     <div
       className={
@@ -77,6 +91,27 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
           : "flex items-center gap-2"
       }
     >
+      <Link
+        href={profileHref}
+        title={`Profile · ${user.name}`}
+        aria-label={`Open profile for ${user.name}`}
+        className={
+          compact
+            ? "flex items-center gap-3 border-b-[2px] border-jade-ink px-4 py-3 font-mono text-xs uppercase tracking-[0.16em]"
+            : "grid size-10 place-items-center border-[2px] border-jade-ink bg-card text-jade-ink hover:bg-muted"
+        }
+      >
+        <span
+          className={
+            compact
+              ? "grid size-8 place-items-center border-[2px] border-jade-ink bg-parchment"
+              : undefined
+          }
+        >
+          <UserRound className="size-4" strokeWidth={2} />
+        </span>
+        {compact ? <span className="truncate">{user.name}</span> : null}
+      </Link>
       {user.role === "ADMIN" ? (
         <Link
           href="/admin/accounts"
@@ -98,7 +133,7 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
             : "border-[2px] border-jade-ink bg-card px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] hover:bg-muted"
         }
       >
-        {compact ? `Logout · ${user.name}` : "Logout"}
+        Logout
       </button>
     </div>
   )

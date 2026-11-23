@@ -8,6 +8,9 @@ interface UserRow {
   email: string
   name: string
   role: "ADMIN" | "MEMBER"
+  membershipTier: "FREE" | "PRO"
+  proExpiresAt: string | null
+  isPro: boolean
   playerId: string | null
   createdAt: string
   player: { nickname: string; name: string } | null
@@ -49,6 +52,12 @@ export function AccountsManager({
           typeof user.createdAt === "string"
             ? user.createdAt
             : new Date(user.createdAt).toISOString(),
+        proExpiresAt:
+          user.proExpiresAt == null
+            ? null
+            : typeof user.proExpiresAt === "string"
+              ? user.proExpiresAt
+              : new Date(user.proExpiresAt).toISOString(),
       })),
     )
     router.refresh()
@@ -106,22 +115,37 @@ export function AccountsManager({
     await refresh()
   }
 
+  async function togglePro30(user: UserRow) {
+    const response = await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setPro30Days: !user.isPro }),
+    })
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string }
+      setError(data.error ?? "Pro update failed")
+      return
+    }
+    await refresh()
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section className="jade-card overflow-hidden">
         <div className="border-b-[2px] border-jade-ink px-4 py-3">
           <h2 className="font-serif text-2xl">Accounts</h2>
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            {users.length} users in JadeMahjong
+            {users.length} users · Set PRO grants 30 days after QRIS WhatsApp
           </p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem] border-collapse text-left">
+          <table className="w-full min-w-[44rem] border-collapse text-left">
             <thead className="bg-jade-ink font-mono text-[10px] uppercase tracking-[0.14em] text-parchment">
               <tr>
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Role</th>
+                <th className="px-3 py-2">Pro</th>
                 <th className="px-3 py-2">Player</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
@@ -134,11 +158,32 @@ export function AccountsManager({
                   <td className="px-3 py-3 font-mono text-[10px] uppercase tracking-[0.12em]">
                     {user.role}
                   </td>
+                  <td className="px-3 py-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.12em]">
+                      {user.isPro ? "PRO" : "FREE"}
+                    </p>
+                    {user.isPro && user.proExpiresAt ? (
+                      <p className="mt-1 font-mono text-[9px] text-muted-foreground">
+                        until {new Date(user.proExpiresAt).toLocaleDateString("id-ID")}
+                      </p>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-3 text-sm">
                     {user.player?.nickname ?? "—"}
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => togglePro30(user)}
+                        className={
+                          user.isPro
+                            ? "border border-jade-ink bg-jade-gold px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
+                            : "border border-jade-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-accent"
+                        }
+                      >
+                        {user.isPro ? "Clear PRO" : "Set PRO · 30d"}
+                      </button>
                       <button
                         type="button"
                         onClick={() => toggleRole(user)}

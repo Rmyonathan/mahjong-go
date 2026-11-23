@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { hashPassword, requireAdmin } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { isProMembership, proGrantExpiry } from "@/lib/membership"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -20,6 +21,8 @@ export async function PATCH(request: Request, { params }: Params) {
     role?: "ADMIN" | "MEMBER"
     password?: string
     playerId?: string | null
+    /** One-click Set PRO (30 days) / clear Pro. */
+    setPro30Days?: boolean
   }
 
   const data: {
@@ -27,6 +30,8 @@ export async function PATCH(request: Request, { params }: Params) {
     role?: "ADMIN" | "MEMBER"
     passwordHash?: string
     playerId?: string | null
+    membershipTier?: "FREE" | "PRO"
+    proExpiresAt?: Date | null
   } = {}
 
   if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim()
@@ -36,6 +41,15 @@ export async function PATCH(request: Request, { params }: Params) {
   }
   if (body.playerId === null || typeof body.playerId === "string") {
     data.playerId = body.playerId
+  }
+  if (typeof body.setPro30Days === "boolean") {
+    if (body.setPro30Days) {
+      data.membershipTier = "PRO"
+      data.proExpiresAt = proGrantExpiry()
+    } else {
+      data.membershipTier = "FREE"
+      data.proExpiresAt = null
+    }
   }
 
   try {
@@ -47,11 +61,19 @@ export async function PATCH(request: Request, { params }: Params) {
         email: true,
         name: true,
         role: true,
+        membershipTier: true,
+        proExpiresAt: true,
         playerId: true,
         createdAt: true,
       },
     })
-    return NextResponse.json({ user })
+    return NextResponse.json({
+      user: {
+        ...user,
+        proExpiresAt: user.proExpiresAt?.toISOString() ?? null,
+        isPro: isProMembership(user),
+      },
+    })
   } catch {
     return NextResponse.json({ error: "User not found or update failed" }, { status: 400 })
   }

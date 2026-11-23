@@ -1,19 +1,24 @@
-import type { BoardTier, FormResult } from "@prisma/client"
+import type { BoardTier, FormResult, MeetBoardType } from "@prisma/client"
 
 import { prisma } from "@/lib/db"
+import { skillForPoints, type JadePlayer } from "@/lib/mock/jade-data"
 import {
-  EXPERIENCE_LEVELS,
-  skillForPoints,
-  type JadePlayer,
-} from "@/lib/mock/jade-data"
-import type {
-  BoardStandingRow,
-  FormResult as MockForm,
-  SeasonKpi,
-  SeasonMeta,
-  SessionDetail,
-  RecentSessionCard,
+  ACTIVE_SEASON,
+  BOARD_STANDINGS,
+  RECENT_SESSIONS,
+  SEASON_KPI,
+  SESSION_DETAILS,
+  WIN_METHODS_SEASON,
+  getBoardStandings,
+  getSessionDetail,
+  type BoardStandingRow,
+  type FormResult as MockForm,
+  type RecentSessionCard,
+  type SeasonKpi,
+  type SeasonMeta,
+  type SessionDetail,
 } from "@/lib/mock/jade-board"
+import { countFinishedSessions } from "@/lib/session/service"
 
 function mapForm(form: FormResult[]): MockForm[] {
   return form as MockForm[]
@@ -43,9 +48,18 @@ function toJadePlayer(player: {
   }
 }
 
+function boardFromMeet(boardType: MeetBoardType): BoardTier {
+  if (boardType === "BEGINNER" || boardType === "GUIDED") return "beginner"
+  if (boardType === "MCR") return "mcr"
+  return "advanced"
+}
+
 export async function getActiveSeason(): Promise<SeasonMeta | null> {
+  const finished = await countFinishedSessions()
+  if (finished === 0) return ACTIVE_SEASON
+
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return null
+  if (!season) return ACTIVE_SEASON
   return {
     id: season.id,
     label: season.label,
@@ -57,8 +71,11 @@ export async function getActiveSeason(): Promise<SeasonMeta | null> {
 }
 
 export async function getSeasonKpi(): Promise<SeasonKpi | null> {
+  const finished = await countFinishedSessions()
+  if (finished === 0) return SEASON_KPI
+
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return null
+  if (!season) return SEASON_KPI
   return {
     sessionsPlayed: season.sessionsPlayed,
     gamesPlayed: season.gamesPlayed,
@@ -80,31 +97,61 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
 }
 
 export async function getWinMethodsSeason() {
+  const finished = await countFinishedSessions()
+  if (finished === 0) return WIN_METHODS_SEASON
+
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return { selfDraw: 0, discard: 0 }
+  if (!season) return WIN_METHODS_SEASON
   return { selfDraw: season.selfDrawWins, discard: season.discardWins }
 }
 
 export async function getDbBoardStandings(
   board: BoardTier | "all" = "advanced",
 ): Promise<BoardStandingRow[]> {
+  const finished = await countFinishedSessions()
+  if (finished === 0) {
+    return getBoardStandings(board === "all" ? "all" : board)
+  }
+
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return []
+  if (!season) return getBoardStandings(board === "all" ? "all" : board)
+
+  const { isProMembership } = await import("@/lib/membership")
 
   const rows = await prisma.boardStanding.findMany({
     where: {
       seasonId: season.id,
       ...(board === "all" ? {} : { board }),
     },
-    include: { player: true },
+    include: {
+      player: {
+        include: {
+          user: {
+            select: {
+              role: true,
+              membershipTier: true,
+              proExpiresAt: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: [{ points: "desc" }, { rank: "asc" }],
   })
 
+  if (rows.length === 0) {
+    return getBoardStandings(board === "all" ? "all" : board)
+  }
+
+  const { experienceFromXp, getXpProgress } = await import("@/lib/xp/progression")
+
   return rows.map((row, index) => {
-    const player = toJadePlayer(row.player)
-    const experienceLevel =
-      EXPERIENCE_LEVELS.find((level) => level.id === player.experienceLevelId) ??
-      EXPERIENCE_LEVELS[EXPERIENCE_LEVELS.length - 1]
+    const player = toJadePlayer({
+      ...row.player,
+      // Badge follows XP curve, not seed / games label
+      experienceLevelId: getXpProgress(row.player.experienceXp).experienceLevelId,
+    })
+    const experienceLevel = experienceFromXp(row.player.experienceXp)
     return {
       rank: board === "all" ? index + 1 : row.rank,
       playerId: row.playerId,
@@ -124,6 +171,7 @@ export async function getDbBoardStandings(
       player,
       skillTier: skillForPoints(row.points),
       experienceLevel,
+      isPro: row.player.user ? isProMembership(row.player.user) : false,
     }
   })
 }
@@ -137,144 +185,243 @@ export async function getPlayersByIds(ids: string[]) {
 }
 
 export async function getRecentSessions(): Promise<RecentSessionCard[]> {
+  const finished = await countFinishedSessions()
+  if (finished === 0) return RECENT_SESSIONS
+
   const sessions = await prisma.gameSession.findMany({
+    where: { status: "FINISHED" },
+    include: {
+      seats: {
+        include: { user: true },
+        orderBy: { netPoints: "desc" },
+      },
+    },
     orderBy: { startedAt: "desc" },
     take: 12,
   })
-  return sessions.map((session) => ({
-    id: session.id,
-    title: session.title,
-    startedAt: session.startedAt.toISOString(),
-    endedAt: session.endedAt.toISOString(),
-    venueName: session.venueName,
-    winnerId: session.winnerId,
-    games: session.games,
-    durationMinutes: session.durationMinutes,
-  }))
+
+  if (sessions.length === 0) return RECENT_SESSIONS
+
+  return sessions.map((session) => {
+    const top = session.seats[0]
+    const winnerId =
+      top?.user?.playerId ??
+      top?.userId ??
+      top?.guestName ??
+      "unknown"
+    const durationMinutes = session.endedAt
+      ? Math.max(
+          1,
+          Math.round(
+            (session.endedAt.getTime() - session.startedAt.getTime()) / 60_000,
+          ),
+        )
+      : 0
+    return {
+      id: session.id,
+      title: session.title,
+      startedAt: session.startedAt.toISOString(),
+      endedAt: (session.endedAt ?? session.startedAt).toISOString(),
+      venueName: "Jade Mahjong Lounge",
+      winnerId,
+      games: session.seats.reduce((sum, seat) => sum + seat.wins, 0),
+      durationMinutes,
+    }
+  })
 }
 
 export async function getDbPlayer(id: string) {
   return prisma.player.findUnique({ where: { id } })
 }
 
-export async function getDbSessionDetail(id: string): Promise<SessionDetail | null> {
+export async function getDbSessionDetail(
+  id: string,
+): Promise<SessionDetail | null> {
   const session = await prisma.gameSession.findUnique({
     where: { id },
     include: {
-      seatPlayers: { orderBy: { seatOrder: "asc" } },
-      standings: { orderBy: { rank: "asc" } },
-      hands: {
-        orderBy: { handNo: "asc" },
-        include: { combos: true, deltas: true },
+      seats: {
+        include: { user: { include: { player: true } } },
+        orderBy: { seatOrder: "asc" },
       },
-      highlights: true,
-      claimedCombos: { orderBy: { count: "desc" } },
+      hands: { orderBy: { handNumber: "asc" } },
     },
   })
-  if (!session) return null
 
-  const playerIds = session.seatPlayers.map((seat) => seat.playerId) as [
-    string,
-    string,
-    string,
-    string,
-  ]
+  if (!session) {
+    return getSessionDetail(id) ?? SESSION_DETAILS[id] ?? null
+  }
 
+  if (session.status !== "FINISHED" && session.hands.length === 0) {
+    return getSessionDetail(id)
+  }
+
+  const seats = session.seats
+  const playerIds = seats.map((seat) => {
+    if (seat.user?.playerId) return seat.user.playerId
+    if (seat.userId) return seat.userId
+    if (seat.guestName) {
+      return `guest:${encodeURIComponent(seat.guestName)}:${seat.id.slice(-6)}`
+    }
+    return `guest:Guest:${seat.id.slice(-6)}`
+  }) as [string, string, string, string] | [string, string, string]
+
+  const seatIndexById = new Map(seats.map((seat, index) => [seat.id, index]))
   const race: Record<string, number[]> = {}
   for (const playerId of playerIds) race[playerId] = [0]
   const totals: Record<string, number> = Object.fromEntries(
     playerIds.map((playerId) => [playerId, 0]),
   )
-  for (const hand of session.hands) {
-    for (const playerId of playerIds) {
-      const delta =
-        hand.deltas.find((entry) => entry.playerId === playerId)?.delta ?? 0
+
+  const hands = session.hands.map((hand) => {
+    const deltasRaw = hand.deltasJson as number[] | Record<string, number>
+    const deltasArr = Array.isArray(deltasRaw)
+      ? deltasRaw
+      : seats.map((seat) => Number(deltasRaw[seat.id] ?? 0))
+
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i]
+      const delta = deltasArr[i] ?? 0
       totals[playerId] = (totals[playerId] ?? 0) + delta
       race[playerId].push(totals[playerId])
     }
-  }
+
+    const winnerIndex =
+      hand.winnerSeatId != null
+        ? (seatIndexById.get(hand.winnerSeatId) ?? -1)
+        : -1
+    const dealtIndex =
+      hand.dealtInSeatId != null
+        ? (seatIndexById.get(hand.dealtInSeatId) ?? null)
+        : null
+    const tiles = (hand.tilesJson as {
+      tileIds?: string[]
+      winningTileId?: string
+    }) ?? { tileIds: [], winningTileId: "" }
+    const combos =
+      (hand.combosJson as { label: string; fan: number }[]) ?? []
+
+    return {
+      id: hand.id,
+      handNo: hand.handNumber,
+      winnerId: winnerIndex >= 0 ? playerIds[winnerIndex] : playerIds[0],
+      method:
+        hand.winMethod === "SELF_DRAW"
+          ? ("self-draw" as const)
+          : ("discard" as const),
+      dealtById:
+        dealtIndex != null && dealtIndex >= 0 ? playerIds[dealtIndex] : null,
+      combos,
+      tileIds: tiles.tileIds ?? [],
+      winningTileId: tiles.winningTileId ?? "",
+      bonusTileIds: [] as string[],
+      deltas: Object.fromEntries(
+        playerIds.map((playerId, index) => [playerId, deltasArr[index] ?? 0]),
+      ),
+    }
+  })
+
+  const standings = [...seats]
+    .sort((a, b) => b.netPoints - a.netPoints)
+    .map((seat, index) => {
+      const playerId =
+        seat.user?.playerId ??
+        seat.userId ??
+        (seat.guestName
+          ? `guest:${encodeURIComponent(seat.guestName)}:${seat.id.slice(-6)}`
+          : `guest:Guest:${seat.id.slice(-6)}`)
+      return {
+        rank: (index + 1) as 1 | 2 | 3 | 4,
+        playerId,
+        net: seat.netPoints,
+        wins: seat.wins,
+        selfDraw: seat.selfDraws,
+        dealtIn: seat.dealtInCount,
+        form: [] as MockForm[],
+      }
+    })
+
+  const selfDrawWins = seats.reduce((sum, seat) => sum + seat.selfDraws, 0)
+  const discardWins = seats.reduce(
+    (sum, seat) => sum + Math.max(0, seat.wins - seat.selfDraws),
+    0,
+  )
+  const biggestHand = Math.max(0, ...session.hands.map((hand) => hand.points))
+  const durationMinutes = session.endedAt
+    ? Math.max(
+        1,
+        Math.round(
+          (session.endedAt.getTime() - session.startedAt.getTime()) / 60_000,
+        ),
+      )
+    : 0
+
+  const paddedIds = [
+    playerIds[0] ?? "unknown",
+    playerIds[1] ?? "unknown",
+    playerIds[2] ?? "unknown",
+    playerIds[3] ?? playerIds[0] ?? "unknown",
+  ] as [string, string, string, string]
 
   return {
     id: session.id,
-    seasonId: session.seasonId,
+    seasonId: ACTIVE_SEASON.id,
     title: session.title,
-    venueName: session.venueName,
-    district: session.district,
+    venueName: "Jade Mahjong Lounge",
+    district: "Bandar Lampung",
     startedAt: session.startedAt.toISOString(),
-    endedAt: session.endedAt.toISOString(),
-    status: session.status,
+    endedAt: (session.endedAt ?? session.startedAt).toISOString(),
+    status: session.status === "FINISHED" ? "finished" : "live",
     seats: 4,
-    games: session.games,
-    handsWon: session.handsWon,
-    draws: session.draws,
-    biggestHand: session.biggestHand,
-    durationMinutes: session.durationMinutes,
-    playerIds,
-    standings: session.standings.map((standing) => ({
-      rank: standing.rank as 1 | 2 | 3 | 4,
-      playerId: standing.playerId,
-      net: standing.net,
-      wins: standing.wins,
-      selfDraw: standing.selfDraw,
-      dealtIn: standing.dealtIn,
-      form: mapForm(standing.form),
-    })),
+    games: session.hands.length,
+    handsWon: session.hands.filter((hand) => hand.winMethod !== "DRAW").length,
+    draws: session.hands.filter((hand) => hand.winMethod === "DRAW").length,
+    biggestHand,
+    durationMinutes,
+    playerIds: paddedIds,
+    standings,
     race,
-    hands: session.hands.map((hand) => ({
-      id: hand.id,
-      handNo: hand.handNo,
-      winnerId: hand.winnerId,
-      method: hand.method === "self_draw" ? "self-draw" : "discard",
-      dealtById: hand.dealtById,
-      combos: hand.combos.map((combo) => ({
-        label: combo.label,
-        fan: combo.fan,
-      })),
-      tileIds: hand.tileIds,
-      winningTileId: hand.winningTileId,
-      bonusTileIds: hand.bonusTileIds,
-      deltas: Object.fromEntries(
-        hand.deltas.map((delta) => [delta.playerId, delta.delta]),
-      ),
-    })),
-    highlights: session.highlights
-      ? {
-          biggestHand: {
-            playerId: session.highlights.biggestHandPlayerId,
-            points: session.highlights.biggestHandPoints,
-            combo: session.highlights.biggestHandCombo,
-          },
-          biggestPayout: {
-            playerId: session.highlights.biggestPayoutPlayerId,
-            points: session.highlights.biggestPayoutPoints,
-          },
-          mostWins: {
-            playerId: session.highlights.mostWinsPlayerId,
-            wins: session.highlights.mostWins,
-          },
-          longestDeal: {
-            playerId: session.highlights.longestDealPlayerId,
-            hands: session.highlights.longestDealHands,
-          },
-          mostDealtIn: {
-            playerId: session.highlights.mostDealtInPlayerId,
-            count: session.highlights.mostDealtIn,
-          },
-        }
-      : {
-          biggestHand: { playerId: playerIds[0], points: 0, combo: "—" },
-          biggestPayout: { playerId: playerIds[0], points: 0 },
-          mostWins: { playerId: playerIds[0], wins: 0 },
-          longestDeal: { playerId: playerIds[0], hands: 0 },
-          mostDealtIn: { playerId: playerIds[0], count: 0 },
-        },
-    winMethods: {
-      selfDraw: session.selfDrawWins,
-      discard: session.discardWins,
+    hands,
+    highlights: {
+      biggestHand: {
+        playerId: standings[0]?.playerId ?? paddedIds[0],
+        points: biggestHand,
+        combo: "—",
+      },
+      biggestPayout: {
+        playerId: standings[0]?.playerId ?? paddedIds[0],
+        points: Math.max(0, ...standings.map((row) => row.net)),
+      },
+      mostWins: {
+        playerId:
+          [...standings].sort((a, b) => b.wins - a.wins)[0]?.playerId ??
+          paddedIds[0],
+        wins: Math.max(0, ...standings.map((row) => row.wins)),
+      },
+      longestDeal: {
+        playerId: paddedIds[0],
+        hands: 0,
+      },
+      mostDealtIn: {
+        playerId:
+          [...standings].sort((a, b) => b.dealtIn - a.dealtIn)[0]?.playerId ??
+          paddedIds[0],
+        count: Math.max(0, ...standings.map((row) => row.dealtIn)),
+      },
     },
-    claimedCombos: session.claimedCombos.map((combo) => ({
-      label: combo.label,
-      count: combo.count,
-    })),
+    winMethods: {
+      selfDraw: selfDrawWins,
+      discard: discardWins,
+    },
+    claimedCombos: [],
   }
+}
+
+/** Expose seeded mock standings count for diagnostics */
+export function getMockStandingCount() {
+  return BOARD_STANDINGS.length
+}
+
+export function liveBoardLabel(board: BoardTier) {
+  return board
 }

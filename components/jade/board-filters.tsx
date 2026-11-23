@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Share2 } from "lucide-react"
+import { MonitorPlay, Share2 } from "lucide-react"
 
 import type { BoardTier } from "@/lib/mock/jade-board"
 import { cn } from "@/lib/utils"
@@ -34,7 +34,7 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
     const url = typeof window !== "undefined" ? window.location.href : "/leaderboard"
     try {
       if (navigator.share) {
-        await navigator.share({ title: "Jade Rank", url })
+        await navigator.share({ title: "Jade Leaderboard", url })
         return
       }
       await navigator.clipboard.writeText(url)
@@ -44,30 +44,18 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center border-[2px] border-jade-ink bg-card">
-          <span className="border-r-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em]">
-            Showing
-          </span>
-          <select
-            className="h-10 bg-transparent px-3 font-mono text-xs uppercase tracking-[0.08em] outline-none"
-            defaultValue={seasonLabel}
-            aria-label="Season"
-          >
-            <option value={seasonLabel}>{seasonLabel}</option>
-          </select>
-        </label>
+        <span className="rounded-full border border-[#102A20]/10 bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          {seasonLabel}
+        </span>
 
         <div
-          className="flex border-[2px] border-jade-ink"
+          className="inline-flex rounded-full border border-[#102A20]/10 bg-white p-1 shadow-sm"
           role="group"
           aria-label="Board"
         >
-          <span className="hidden border-r-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] sm:inline">
-            Board
-          </span>
-          {BOARDS.map((item, index) => {
+          {BOARDS.map((item) => {
             const active = board === item.id
             return (
               <button
@@ -75,11 +63,10 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
                 type="button"
                 onClick={() => setBoard(item.id)}
                 className={cn(
-                  "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                  index > 0 && "border-l-[2px] border-jade-ink",
+                  "tap-press rounded-full px-3.5 py-1.5 text-xs font-semibold transition",
                   active
-                    ? "bg-jade-ink text-parchment"
-                    : "bg-card text-jade-ink hover:bg-muted",
+                    ? "bg-jade-soft text-jade-accent"
+                    : "text-jade-ink/70 hover:bg-jade-soft/60",
                 )}
               >
                 {item.label}
@@ -89,16 +76,24 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={share}
-        className="inline-flex h-10 items-center gap-2 border-[2px] border-jade-ink bg-card px-4 font-mono text-[10px] uppercase tracking-[0.16em] shadow-[3px_3px_0_0_var(--jade-ink)] hover:translate-x-px hover:translate-y-px hover:shadow-none"
-      >
-        <Share2 className="size-3.5" />
-        Share standings
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={share}
+          className="tap-press inline-flex h-10 items-center gap-2 rounded-full border border-[#102A20]/10 bg-white px-3.5 text-xs font-semibold text-jade-ink shadow-sm hover:bg-jade-soft"
+        >
+          <Share2 className="size-3.5" />
+          Share
+        </button>
+        <Link
+          href="/leaderboard?tv=1"
+          className="tap-press inline-flex h-10 items-center gap-2 rounded-full border border-[#102A20]/10 bg-white px-3.5 text-xs font-semibold text-jade-ink shadow-sm hover:bg-jade-soft"
+        >
+          <MonitorPlay className="size-3.5" />
+          TV Mode
+        </Link>
+      </div>
 
-      {/* Keep linkable state for no-JS crawlers */}
       <Link href="/leaderboard?board=advanced" className="sr-only">
         Advanced board
       </Link>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   DndContext,
   DragOverlay,
@@ -29,6 +30,8 @@ import { analyzeHand, getRecommendations } from "@/lib/mahjong/shanten"
 import { sortMainHand } from "@/lib/mahjong/sort-hand"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
 import type { GameContext, Tile, HandTile } from "@/lib/mahjong/types"
+import { POINT_UNIT } from "@/lib/session/live-demo"
+import { savePendingHand } from "@/lib/session/pending-hand"
 import { Button } from "@/components/ui/button"
 import { MahjongTile } from "@/components/mahjong/mahjong-tile"
 import { TileBank } from "@/components/mahjong/tile-bank"
@@ -75,6 +78,9 @@ function useIsDesktop(): boolean {
 
 export function CalculatorWorkspace() {
   const isDesktop = useIsDesktop()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const applyToSessionId = searchParams.get("applyToSession")
   const [mainHand, setMainHand] = React.useState<HandTile[]>([])
   const [flowerHand, setFlowerHand] = React.useState<HandTile[]>([])
   const [activeTile, setActiveTile] = React.useState<Tile | null>(null)
@@ -326,12 +332,41 @@ export function CalculatorWorkspace() {
 
   const isEmpty = mainHand.length === 0 && flowerHand.length === 0
 
+  function handleApplyToSession(payload: {
+    totalFan: number
+    pointsRon: number
+    pointsTsumo: number
+    combos: { label: string; fan: number }[]
+    tileIds: string[]
+  }) {
+    if (!applyToSessionId) return
+    const tileIds =
+      payload.tileIds.length > 0
+        ? payload.tileIds
+        : mainHand.map((tile) => tile.id)
+    savePendingHand({
+      sessionId: applyToSessionId,
+      totalFan: payload.totalFan,
+      pointsRon: payload.pointsRon * POINT_UNIT,
+      pointsTsumo: payload.pointsTsumo * POINT_UNIT,
+      method: "discard",
+      combos: payload.combos,
+      tileIds,
+      winningTileId: tileIds[tileIds.length - 1] ?? "",
+      createdAt: new Date().toISOString(),
+    })
+    router.push(`/session/live?id=${encodeURIComponent(applyToSessionId)}&pending=1`)
+  }
+
   const sharedDialogs = (
     <>
       <WinScoreDialog
         open={winDialogOpen}
         onOpenChange={setWinDialogOpen}
         score={winScore}
+        applyToSessionId={applyToSessionId}
+        tileIds={mainHand.map((tile) => tile.id)}
+        onApplyToSession={handleApplyToSession}
       />
       <AiAnalysisDialog
         open={analysisOpen}

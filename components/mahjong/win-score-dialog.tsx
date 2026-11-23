@@ -18,12 +18,25 @@ interface WinScoreDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   score: ScoreResult | null
+  /** When set, offer applying this HKOS result back to a live table. */
+  applyToSessionId?: string | null
+  tileIds?: string[]
+  onApplyToSession?: (payload: {
+    totalFan: number
+    pointsRon: number
+    pointsTsumo: number
+    combos: { label: string; fan: number }[]
+    tileIds: string[]
+  }) => void
 }
 
 export function WinScoreDialog({
   open,
   onOpenChange,
   score,
+  applyToSessionId,
+  tileIds = [],
+  onApplyToSession,
 }: WinScoreDialogProps) {
   if (!score) return null
 
@@ -168,6 +181,27 @@ export function WinScoreDialog({
             <p className="mt-2 text-center text-xs text-amber-400/80">
               Limit Hand — bayaran maksimum {payout.perOpponentRon} per lawan.
             </p>
+          ) : null}
+
+          {applyToSessionId && onApplyToSession ? (
+            <button
+              type="button"
+              onClick={() =>
+                onApplyToSession({
+                  totalFan: score.totalFan,
+                  pointsRon: payout.perOpponentRon,
+                  pointsTsumo: payout.totalTsumo,
+                  combos: score.patterns.map((pattern) => ({
+                    label: pattern.name,
+                    fan: pattern.fan,
+                  })),
+                  tileIds,
+                })
+              }
+              className="mt-4 inline-flex h-11 w-full items-center justify-center border-[2px] border-amber-400 bg-amber-500/20 font-mono text-[11px] uppercase tracking-[0.14em] text-amber-100"
+            >
+              Apply to live table →
+            </button>
           ) : null}
         </div>
       </DialogContent>

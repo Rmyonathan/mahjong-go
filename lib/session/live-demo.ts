@@ -348,11 +348,13 @@ export function endLiveSession(session: LiveSession): LiveSession {
   }
 }
 
+/** @deprecated Live tables persist via `/api/sessions` (Postgres). Kept for emergency local demos only. */
 export function saveLiveSession(session: LiveSession) {
   if (typeof window === "undefined") return
   window.localStorage.setItem(LIVE_STORAGE_KEY, JSON.stringify(session))
 }
 
+/** @deprecated Prefer GET `/api/sessions/[id]`. */
 export function loadLiveSession(): LiveSession | null {
   if (typeof window === "undefined") return null
   const raw = window.localStorage.getItem(LIVE_STORAGE_KEY)
@@ -364,6 +366,7 @@ export function loadLiveSession(): LiveSession | null {
   }
 }
 
+/** @deprecated Prefer finishing via POST `/api/sessions/[id]/finish`. */
 export function clearLiveSession() {
   if (typeof window === "undefined") return
   window.localStorage.removeItem(LIVE_STORAGE_KEY)

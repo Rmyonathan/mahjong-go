@@ -1,5 +1,6 @@
 import { AccountsManager } from "@/components/admin/accounts-manager"
 import { prisma } from "@/lib/db"
+import { isProMembership } from "@/lib/membership"
 
 export const dynamic = "force-dynamic"
 
@@ -16,6 +17,8 @@ export default async function AdminAccountsPage() {
         email: true,
         name: true,
         role: true,
+        membershipTier: true,
+        proExpiresAt: true,
         playerId: true,
         createdAt: true,
         player: { select: { nickname: true, name: true } },
@@ -32,6 +35,8 @@ export default async function AdminAccountsPage() {
       initialUsers={users.map((user) => ({
         ...user,
         createdAt: user.createdAt.toISOString(),
+        proExpiresAt: user.proExpiresAt?.toISOString() ?? null,
+        isPro: isProMembership(user),
       }))}
       players={players}
     />

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 type Step = "viewfinder" | "scanning" | "review"
 
 export interface ConfirmedScanHand {
-  demoHandId: string
+  demoHandId?: string
   tileIds: string[]
   winningTileId: string
   combos: { label: string; fan: number }[]

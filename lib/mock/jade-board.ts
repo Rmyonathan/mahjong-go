@@ -61,6 +61,8 @@ export interface BoardStandingRow extends BoardStanding {
   player: JadePlayer
   skillTier: SkillTier
   experienceLevel: ExperienceLevel
+  /** Active Pro membership (or admin) linked to this player. */
+  isPro?: boolean
 }
 
 export interface SeasonKpi {

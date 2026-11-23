@@ -4,37 +4,37 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useMemo, useState } from "react"
 
-import { PLAYERS } from "@/lib/mock/jade-data"
 import {
   SCHEDULE_VENUES,
   formatFeeIdr,
   type ScheduleLevel,
-  type ScheduledMeet,
 } from "@/lib/mock/jade-schedule"
 import {
-  loadBookingStore,
-  publishMeet,
-  saveBookingStore,
-  type ScheduleBookingStore,
-} from "@/lib/schedule/booking-store"
-import {
-  boardFromMeet,
-  seatsFromMeetRoster,
-} from "@/lib/session/apply-schedule-meet"
+  DEFAULT_MEET_FEE_IDR,
+  DEFAULT_MEET_LOCATION,
+  type ApiMeet,
+  type ApiMeetBoardType,
+} from "@/lib/schedule/types"
 import {
   DEFAULT_SESSION_TITLE,
-  QUICK_SELECT_PLAYERS,
   WIND_META,
-  createLiveSession,
-  saveLiveSession,
   windsForSeatCount,
   type LiveBoard,
   type LiveWind,
 } from "@/lib/session/live-demo"
 import { cn } from "@/lib/utils"
 
+type ClubMember = {
+  userId: string
+  playerId: string | null
+  name: string
+  nickname: string
+}
+
 type SeatDraft = {
   wind: LiveWind
+  /** Club User.id when seated from members roster */
+  userId: string | null
   playerId: string | null
   name: string
   nickname: string
@@ -45,18 +45,35 @@ type SetupMode = "schedule" | "live"
 
 const LEVEL_OPTIONS: {
   id: ScheduleLevel
-  filter: ScheduledMeet["levelFilter"]
+  boardType: ApiMeetBoardType
   label: string
 }[] = [
-  { id: "BEGINNER", filter: "beginner", label: "Beginner" },
-  { id: "ALL LEVELS", filter: "open", label: "All levels" },
-  { id: "ADVANCED MCR", filter: "advanced-mcr", label: "Advanced MCR" },
-  { id: "GUIDED · MENTOR", filter: "guided", label: "Guided" },
+  { id: "BEGINNER", boardType: "BEGINNER", label: "Beginner" },
+  { id: "ALL LEVELS", boardType: "ADVANCED", label: "All levels" },
+  { id: "ADVANCED MCR", boardType: "MCR", label: "Advanced MCR" },
+  { id: "GUIDED · MENTOR", boardType: "GUIDED", label: "Guided" },
 ]
+
+function buildDateLabel(date: string) {
+  const value = new Date(`${date}T12:00:00+07:00`)
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(value)
+}
+
+function liveBoardFromApi(board: ApiMeetBoardType): LiveBoard {
+  if (board === "MCR") return "mcr"
+  if (board === "BEGINNER" || board === "GUIDED") return "beginner"
+  return "advanced"
+}
 
 function emptySeats(seatCount: 3 | 4): SeatDraft[] {
   return windsForSeatCount(seatCount).map((wind) => ({
     wind,
+    userId: null,
     playerId: null,
     name: "",
     nickname: "",
@@ -89,20 +106,26 @@ export default function NewSessionPage() {
 function NewSessionForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [store, setStore] = useState<ScheduleBookingStore | null>(null)
   const [mode, setMode] = useState<SetupMode>("schedule")
+  const [publishing, setPublishing] = useState(false)
+  const [opening, setOpening] = useState(false)
+  const [meetId, setMeetId] = useState<string | null>(null)
+  const [members, setMembers] = useState<ClubMember[]>([])
+  const [membersError, setMembersError] = useState<string | null>(null)
 
   // Schedule-for-later fields
   // EDIT HERE — default host template for a future meet
   const [title, setTitle] = useState("Friday Teluk Beginner")
-  const [date, setDate] = useState(defaultDateOffset(2))
+  const [date, setDate] = useState(defaultDateOffset(1))
   const [startTime, setStartTime] = useState("13:00")
   const [endTime, setEndTime] = useState("16:00")
-  const [location, setLocation] = useState<string>(SCHEDULE_VENUES[0])
+  const [location, setLocation] = useState<string>(
+    SCHEDULE_VENUES[0] ?? DEFAULT_MEET_LOCATION,
+  )
   const [levelId, setLevelId] = useState<ScheduleLevel>("BEGINNER")
   const [proOnly, setProOnly] = useState(true)
   const [tables, setTables] = useState(1)
-  const [feeIdr, setFeeIdr] = useState(50_000)
+  const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
 
   // Go-live-now fields
   const [liveTitle, setLiveTitle] = useState(DEFAULT_SESSION_TITLE)
@@ -113,41 +136,122 @@ function NewSessionForm() {
   const [booted, setBooted] = useState(false)
 
   useEffect(() => {
-    setStore(loadBookingStore())
-  }, [])
-
-  useEffect(() => {
-    if (!store || booted) return
+    if (booted) return
     const modeParam = searchParams.get("mode")
-    const meetId = searchParams.get("meet")
+    const meetParam = searchParams.get("meet")
     const titleParam = searchParams.get("title")
 
-    if (modeParam === "live" || meetId) {
+    if (modeParam === "live" || meetParam || titleParam) {
       setMode("live")
-      const meet = store.meets.find((entry) => entry.id === meetId)
-      if (meet) {
-        setLiveTitle(meet.title)
-        setBoard(boardFromMeet(meet))
-        setSeatCount(4)
-        setSeats(seatsFromMeetRoster(meet, 4))
-      } else if (titleParam) {
-        setLiveTitle(titleParam)
+      if (titleParam) setLiveTitle(titleParam)
+      if (meetParam) setMeetId(meetParam)
+
+      if (meetParam) {
+        void fetch(`/api/sessions?meetId=${encodeURIComponent(meetParam)}`)
+          .then(async (response) => {
+            if (!response.ok) return null
+            return (await response.json()) as {
+              liveSession?: { id: string } | null
+            }
+          })
+          .then((data) => {
+            if (data?.liveSession?.id) {
+              router.replace(`/session/live?id=${data.liveSession.id}`)
+              return true
+            }
+            return false
+          })
+          .then((resumed) => {
+            if (resumed) return
+            void fetch("/api/schedule")
+              .then((response) => response.json())
+              .then((data: { meets?: ApiMeet[] }) => {
+                const meet = data.meets?.find((entry) => entry.id === meetParam)
+                if (!meet) return
+                setLiveTitle(meet.title)
+                setBoard(liveBoardFromApi(meet.boardType))
+                const winds = windsForSeatCount(4)
+                const roster = meet.roster.slice(0, 4)
+                setSeatCount(4)
+                setSeats(
+                  winds.map((wind, index) => {
+                    const player = roster[index]
+                    if (!player) {
+                      return {
+                        wind,
+                        userId: null,
+                        playerId: null,
+                        name: "",
+                        nickname: "",
+                        guestDraft: "",
+                      }
+                    }
+                    return {
+                      wind,
+                      userId: player.userId,
+                      playerId: null,
+                      name: player.name,
+                      nickname: player.nickname,
+                      guestDraft: "",
+                    }
+                  }),
+                )
+              })
+              .catch(() => undefined)
+          })
+          .catch(() => undefined)
       }
     }
     setBooted(true)
-  }, [store, searchParams, booted])
+  }, [searchParams, booted])
+
+  useEffect(() => {
+    if (mode !== "live") return
+    let cancelled = false
+    void fetch("/api/members")
+      .then(async (response) => {
+        if (response.status === 401) {
+          router.replace(
+            `/login?next=${encodeURIComponent("/session/new?mode=live")}`,
+          )
+          return null
+        }
+        const data = (await response.json()) as {
+          members?: ClubMember[]
+          error?: string
+        }
+        if (!response.ok) throw new Error(data.error ?? "Could not load members")
+        return data.members ?? []
+      })
+      .then((list) => {
+        if (cancelled || !list) return
+        setMembers(list)
+        setMembersError(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setMembersError(
+          error instanceof Error ? error.message : "Could not load members",
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, router])
 
   const levelMeta = LEVEL_OPTIONS.find((entry) => entry.id === levelId) ?? LEVEL_OPTIONS[0]
   const seatCap = tables * 4
 
-  const chipPool = useMemo(() => {
-    const fromHouse = PLAYERS.slice(0, 8).map((player) => ({
-      id: player.id,
-      name: player.name,
-      nickname: player.nickname,
-    }))
-    return [...QUICK_SELECT_PLAYERS, ...fromHouse]
-  }, [])
+  const chipPool = useMemo(
+    () =>
+      members.map((member) => ({
+        userId: member.userId,
+        playerId: member.playerId,
+        name: member.name,
+        nickname: member.nickname,
+      })),
+    [members],
+  )
 
   function setSeatCountAndReset(next: 3 | 4) {
     setSeatCount(next)
@@ -156,19 +260,32 @@ function NewSessionForm() {
 
   function assignChip(
     seatIndex: number,
-    chip: { id: string; name: string; nickname: string },
+    chip: {
+      userId: string
+      playerId: string | null
+      name: string
+      nickname: string
+    },
   ) {
     setSeats((prev) => {
       const cleared = prev.map((seat) =>
-        seat.playerId === chip.id
-          ? { ...seat, playerId: null, name: "", nickname: "", guestDraft: "" }
+        seat.userId === chip.userId
+          ? {
+              ...seat,
+              userId: null,
+              playerId: null,
+              name: "",
+              nickname: "",
+              guestDraft: "",
+            }
           : seat,
       )
       return cleared.map((seat, index) =>
         index === seatIndex
           ? {
               ...seat,
-              playerId: chip.id,
+              userId: chip.userId,
+              playerId: chip.playerId,
               name: chip.name,
               nickname: chip.nickname,
               guestDraft: "",
@@ -186,7 +303,8 @@ function NewSessionForm() {
         if (!name) return seat
         return {
           ...seat,
-          playerId: `guest-${name.toLowerCase().replace(/\s+/g, "-")}`,
+          userId: null,
+          playerId: null,
           name,
           nickname: name.split(" ")[0] ?? name,
           guestDraft: "",
@@ -195,8 +313,7 @@ function NewSessionForm() {
     )
   }
 
-  function publishToSchedule() {
-    if (!store) return
+  async function publishToSchedule() {
     if (!title.trim() || !date || !startTime || !endTime || !location.trim()) {
       setError("Fill title, date, time, and location.")
       return
@@ -205,26 +322,44 @@ function NewSessionForm() {
       setError("End time must be after start time.")
       return
     }
+    setPublishing(true)
     setError(null)
-    const result = publishMeet(store, {
-      title,
-      date,
-      startTime,
-      endTime,
-      location,
-      level: levelMeta.id,
-      levelFilter: levelMeta.filter,
-      feeIdr,
-      tables,
-      seatCap,
-      proOnly,
-    })
-    saveBookingStore(result.store)
-    setStore(result.store)
-    router.push("/schedule")
+    try {
+      const startsAt = new Date(`${date}T${startTime}:00+07:00`)
+      const endsAt = new Date(`${date}T${endTime}:00+07:00`)
+      const response = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          dateLabel: buildDateLabel(date),
+          startTime,
+          endTime,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          location: location.trim() || DEFAULT_MEET_LOCATION,
+          boardType: levelMeta.boardType,
+          maxSeats: seatCap,
+          tables,
+          feeIdr,
+          proOnly,
+        }),
+      })
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) {
+        setError(data.error ?? "Could not publish meet (admin login required)")
+        return
+      }
+      router.push("/schedule")
+      router.refresh()
+    } catch {
+      setError("Network error publishing meet")
+    } finally {
+      setPublishing(false)
+    }
   }
 
-  function openLiveTable() {
+  async function openLiveTable() {
     const missing = seats.find((seat) => !seat.name.trim())
     if (missing) {
       setError(
@@ -232,20 +367,39 @@ function NewSessionForm() {
       )
       return
     }
+    setOpening(true)
     setError(null)
-    const session = createLiveSession({
-      title: liveTitle,
-      board,
-      seatCount,
-      seats: seats.map(({ wind, playerId, name, nickname }) => ({
-        wind,
-        playerId,
-        name,
-        nickname,
-      })),
-    })
-    saveLiveSession(session)
-    router.push("/session/live")
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: liveTitle.trim() || DEFAULT_SESSION_TITLE,
+          board,
+          meetId,
+          seats: seats.map(({ wind, userId, playerId, name, nickname }) => {
+            if (userId) {
+              return { wind, userId, playerId, name, nickname }
+            }
+            return { wind, guestName: name, name, nickname }
+          }),
+        }),
+      })
+      const data = (await response.json()) as {
+        error?: string
+        session?: { id: string }
+      }
+      if (!response.ok || !data.session?.id) {
+        setError(data.error ?? "Could not open table (login required)")
+        return
+      }
+      router.push(`/session/live?id=${data.session.id}`)
+      router.refresh()
+    } catch {
+      setError("Network error opening table")
+    } finally {
+      setOpening(false)
+    }
   }
 
   return (
@@ -485,10 +639,11 @@ function NewSessionForm() {
 
             <button
               type="button"
-              onClick={publishToSchedule}
-              className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em]"
+              disabled={publishing}
+              onClick={() => void publishToSchedule()}
+              className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
             >
-              Publish to schedule →
+              {publishing ? "Publishing…" : "Publish to schedule →"}
             </button>
           </>
         ) : (
@@ -565,8 +720,18 @@ function NewSessionForm() {
 
             <section aria-label="Seat assignment">
               <h2 className="font-mono text-[10px] uppercase tracking-[0.16em]">
-                Seat assignment
+                Seat assignment · club accounts
               </h2>
+              {membersError ? (
+                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-red">
+                  {membersError}
+                </p>
+              ) : null}
+              {chipPool.length === 0 && !membersError ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Loading members from Postgres…
+                </p>
+              ) : null}
               <ul className="mt-3 grid gap-3 sm:grid-cols-2">
                 {seats.map((seat, seatIndex) => (
                   <li
@@ -588,6 +753,7 @@ function NewSessionForm() {
                         <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                           {WIND_META[seat.wind].label}
                           {seat.wind === "east" ? " · Dealer" : ""}
+                          {seat.userId ? " · member" : seat.name ? " · guest" : ""}
                         </p>
                         <p className="truncate font-serif text-xl leading-none">
                           {seat.name || "Empty seat"}
@@ -598,12 +764,12 @@ function NewSessionForm() {
                       {chipPool.map((chip) => {
                         const takenElsewhere = seats.some(
                           (other, index) =>
-                            index !== seatIndex && other.playerId === chip.id,
+                            index !== seatIndex && other.userId === chip.userId,
                         )
-                        const active = seat.playerId === chip.id
+                        const active = seat.userId === chip.userId
                         return (
                           <button
-                            key={chip.id}
+                            key={chip.userId}
                             type="button"
                             disabled={takenElsewhere}
                             onClick={() => assignChip(seatIndex, chip)}
@@ -661,10 +827,11 @@ function NewSessionForm() {
 
             <button
               type="button"
-              onClick={openLiveTable}
-              className="scan-cta inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em]"
+              disabled={opening}
+              onClick={() => void openLiveTable()}
+              className="scan-cta inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
             >
-              Open table & start session →
+              {opening ? "Opening table…" : "Open table & start session →"}
             </button>
           </>
         )}

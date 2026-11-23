@@ -2,208 +2,404 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
-import { Menu, Search, X } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
+import { ChevronDown, LogOut, Search, Shield, UserRound } from "lucide-react"
 
-import { AuthControls } from "@/components/auth-controls"
+import { SearchPlayerModal } from "@/components/search-player-modal"
+import {
+  CLUB_LEARN_LINKS,
+  DASHBOARD_HREF,
+  LEADERBOARD_HREF,
+  SCHEDULE_HREF,
+  TOOL_LINKS,
+} from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
-const NAV = [
-  { href: "/leaderboard", label: "Meja" },
-  { href: "/schedule", label: "Schedule" },
-  { href: "/levels", label: "Pangkat" },
-  { href: "/combos", label: "Combos" },
-  { href: "/scan", label: "Scan" },
-  { href: "/about", label: "About" },
-] as const
-
-function isActive(pathname: string, href: string) {
-  if (href === "/scan") {
-    return pathname === "/scan" || pathname.startsWith("/calculator")
-  }
-  if (href === "/combos") {
-    return pathname === "/combos" || pathname.startsWith("/hk")
-  }
-  return pathname === href || pathname.startsWith(`${href}/`)
+type AuthUser = {
+  id: string
+  name: string
+  role: "ADMIN" | "MEMBER"
+  playerId?: string | null
 }
 
 export function SiteHeader() {
   const pathname = usePathname()
-  const [open, setOpen] = useState(false)
+  const router = useRouter()
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [liveCount, setLiveCount] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [clubOpen, setClubOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [userOpen, setUserOpen] = useState(false)
+  const clubRef = useRef<HTMLDivElement>(null)
+  const toolsRef = useRef<HTMLDivElement>(null)
+  const userRef = useRef<HTMLDivElement>(null)
+
+  const loggedIn = Boolean(user)
 
   useEffect(() => {
-    setOpen(false)
+    setClubOpen(false)
+    setToolsOpen(false)
+    setUserOpen(false)
+    setSearchOpen(false)
   }, [pathname])
 
   useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false)
+    function onDoc(event: MouseEvent) {
+      const target = event.target as Node
+      if (clubRef.current && !clubRef.current.contains(target)) setClubOpen(false)
+      if (toolsRef.current && !toolsRef.current.contains(target)) setToolsOpen(false)
+      if (userRef.current && !userRef.current.contains(target)) setUserOpen(false)
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [open])
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([
+      fetch("/api/auth/me").then(async (response) => {
+        if (!response.ok) return null
+        const data = (await response.json()) as { user?: AuthUser | null }
+        return data.user ?? null
+      }),
+      fetch("/api/sessions").then(async (response) => {
+        if (!response.ok) return [] as Array<{ id: string }>
+        const data = (await response.json()) as {
+          liveSessions?: Array<{ id: string }>
+        }
+        return data.liveSessions ?? []
+      }),
+    ])
+      .then(([nextUser, liveSessions]) => {
+        if (cancelled) return
+        setUser(nextUser)
+        setLiveCount(nextUser ? liveSessions.length : 0)
+        setAuthReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUser(null)
+          setLiveCount(0)
+          setAuthReady(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    setUser(null)
+    setUserOpen(false)
+    try {
+      window.sessionStorage.removeItem("jade_pending_hand")
+      window.localStorage.removeItem("jade_live_session")
+    } catch {
+      /* ignore */
+    }
+    router.push("/login")
+    router.refresh()
+  }
+
+  const scheduleActive =
+    pathname === SCHEDULE_HREF || pathname.startsWith(`${SCHEDULE_HREF}/`)
+  const boardActive =
+    pathname === LEADERBOARD_HREF || pathname.startsWith(`${LEADERBOARD_HREF}/`)
+  const clubActive = CLUB_LEARN_LINKS.some(
+    (link) => pathname === link.href || pathname.startsWith(`${link.href}/`),
+  )
+  const toolsActive =
+    pathname.startsWith("/calculator") ||
+    pathname.startsWith("/scan") ||
+    pathname.startsWith("/hk")
+
+  const initials =
+    user?.name
+      ?.split(/\s+/)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?"
+
+  const profileHref = user?.playerId ? `/players/${user.playerId}` : "/me"
+  const brandHref = loggedIn ? DASHBOARD_HREF : LEADERBOARD_HREF
+  // Always hub when multiple tables — never inflate the CTA label
+  const liveHref = "/live"
 
   return (
-    <header className="site-header sticky top-0 z-40 border-b-[2px] border-jade-ink bg-parchment/95 backdrop-blur-[2px]">
-      <div className="paper-grain pointer-events-none absolute inset-0 opacity-40" aria-hidden />
-      <div className="relative mx-auto flex h-[4.5rem] w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
-        <Link
-          href="/leaderboard"
-          className="flex shrink-0 items-center text-jade-ink"
-          aria-label="Jade Mahjong"
-        >
-          <Image
-            src="/jade.png"
-            alt="Jade Mahjong BDL"
-            width={148}
-            height={148}
-            priority
-            className="h-12 w-12 object-contain sm:h-14 sm:w-14"
-          />
-        </Link>
-
-        <form
-          action="/leaderboard"
-          className="mx-auto hidden min-w-0 w-full max-w-sm flex-1 md:flex"
-        >
-          <label className="sr-only" htmlFor="player-search">
-            Search players
-          </label>
-          <input
-            id="player-search"
-            name="q"
-            type="search"
-            placeholder="Cari pemain..."
-            autoComplete="off"
-            className="h-10 w-full border-[2px] border-r-0 border-jade-ink bg-card px-3 font-mono text-xs uppercase tracking-[0.08em] text-jade-ink outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-jade-ink/45"
-          />
-          <button
-            type="submit"
-            aria-label="Search players"
-            className="grid size-10 shrink-0 place-items-center border-[2px] border-jade-ink bg-jade-ink text-parchment"
+    <>
+      <header className="site-header sticky top-0 z-40 border-b border-[#102A20]/10 bg-[#F6F4EE]/85 backdrop-blur-md">
+        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 px-4 sm:gap-3 sm:px-6">
+          {/* Brand — never shrink away */}
+          <Link
+            href={brandHref}
+            className="tap-press z-10 flex min-w-0 shrink-0 items-center gap-2 text-jade-ink"
+            aria-label="Jade Mahjong home"
           >
-            <Search className="size-4" />
-          </button>
-        </form>
+            <Image
+              src="/jade.png"
+              alt=""
+              width={40}
+              height={40}
+              priority
+              className="size-9 shrink-0 rounded-xl object-contain sm:size-10"
+            />
+            <span className="truncate font-serif text-base font-semibold tracking-tight sm:text-lg">
+              Jade Mahjong
+            </span>
+          </Link>
 
-        <div className="ml-auto hidden items-center gap-2 lg:flex">
-          <nav
-            aria-label="House"
-            className="flex items-stretch border-[2px] border-jade-ink"
-          >
-            {NAV.map((item) => {
-              const active = isActive(pathname, item.href)
-              return (
+          {/* Desktop center nav */}
+          <div className="hidden min-w-0 justify-center md:flex">
+            {loggedIn ? (
+              <nav
+                aria-label="Primary"
+                className="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
+              >
                 <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
+                  href={SCHEDULE_HREF}
                   className={cn(
-                    "border-r-[2px] border-jade-ink px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] last:border-r-0",
-                    active
-                      ? "bg-jade-ink text-parchment"
-                      : "bg-card text-jade-ink hover:bg-muted",
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    scheduleActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                   )}
                 >
-                  {item.label}
+                  Schedule
                 </Link>
-              )
-            })}
-          </nav>
-          <Link
-            href="/session/new"
-            className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-jade-accent px-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
-          >
-            + New session
-          </Link>
-          <AuthControls />
-        </div>
+                <Link
+                  href={LEADERBOARD_HREF}
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    boardActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
+                  )}
+                >
+                  Leaderboard
+                </Link>
 
-        <button
-          type="button"
-          className="ml-auto grid size-10 place-items-center border-[2px] border-jade-ink bg-card text-jade-ink lg:hidden"
-          aria-expanded={open}
-          aria-controls="site-nav-drawer"
-          aria-label={open ? "Close menu" : "Open menu"}
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? <X className="size-4" /> : <Menu className="size-4" />}
-        </button>
-      </div>
-
-      {open ? (
-        <div id="site-nav-drawer" className="lg:hidden">
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="fixed inset-0 z-40 bg-jade-ink/45"
-            onClick={() => setOpen(false)}
-          />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-[min(100%,20rem)] flex-col border-l-[2px] border-jade-ink bg-parchment shadow-[-6px_0_0_0_var(--jade-ink)]">
-            <div className="paper-grain pointer-events-none absolute inset-0 opacity-35" aria-hidden />
-            <div className="relative flex items-center justify-between border-b-[2px] border-jade-ink px-4 py-3">
-              <span className="font-mono text-[10px] uppercase tracking-[0.22em]">
-                Menu
-              </span>
-              <button
-                type="button"
-                aria-label="Close menu"
-                className="grid size-9 place-items-center border-[2px] border-jade-ink bg-card"
-                onClick={() => setOpen(false)}
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-            <form action="/leaderboard" className="relative flex border-b-[2px] border-jade-ink p-4">
-              <label className="sr-only" htmlFor="player-search-mobile">
-                Search players
-              </label>
-              <input
-                id="player-search-mobile"
-                name="q"
-                type="search"
-                placeholder="Cari pemain..."
-                autoComplete="off"
-                className="h-10 w-full border-[2px] border-r-0 border-jade-ink bg-card px-3 text-sm text-jade-ink outline-none placeholder:text-jade-ink/50"
-              />
-              <button
-                type="submit"
-                aria-label="Search players"
-                className="grid size-10 shrink-0 place-items-center border-[2px] border-jade-ink bg-jade-ink text-parchment"
-              >
-                <Search className="size-4" />
-              </button>
-            </form>
-            <nav aria-label="House mobile" className="relative flex flex-col">
-              {NAV.map((item) => {
-                const active = isActive(pathname, item.href)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
+                <div className="relative shrink-0" ref={clubRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClubOpen((v) => !v)
+                      setToolsOpen(false)
+                    }}
                     className={cn(
-                      "border-b-[2px] border-jade-ink px-4 py-3 font-mono text-xs uppercase tracking-[0.16em]",
-                      active ? "bg-jade-ink text-parchment" : "bg-card text-jade-ink",
+                      "tap-press inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium transition",
+                      clubActive || clubOpen
+                        ? "bg-jade-soft text-jade-accent"
+                        : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                     )}
                   >
-                    {item.label}
-                  </Link>
-                )
-              })}
-              <Link
-                href="/session/new"
-                className="border-b-[2px] border-jade-ink bg-jade-accent px-4 py-3 font-mono text-xs uppercase tracking-[0.16em] text-white"
+                    Club & Learn
+                    <ChevronDown className="size-3.5 opacity-70" />
+                  </button>
+                  {clubOpen ? (
+                    <div className="absolute left-1/2 top-[calc(100%+0.6rem)] z-50 w-72 -translate-x-1/2 rounded-2xl border border-[#102A20]/10 bg-white p-2 shadow-[0_16px_40px_-12px_rgba(16,42,32,0.25)]">
+                      {CLUB_LEARN_LINKS.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setClubOpen(false)}
+                            className="tap-press flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-jade-soft"
+                          >
+                            <span className="mt-0.5 grid size-8 place-items-center rounded-lg bg-jade-soft text-jade-accent">
+                              <Icon className="size-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-jade-ink">
+                                {item.label}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {item.subtitle}
+                              </span>
+                            </span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="relative shrink-0" ref={toolsRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setToolsOpen((v) => !v)
+                      setClubOpen(false)
+                    }}
+                    className={cn(
+                      "tap-press inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium transition",
+                      toolsActive || toolsOpen
+                        ? "bg-jade-soft text-jade-accent"
+                        : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
+                    )}
+                  >
+                    Tools
+                    <ChevronDown className="size-3.5 opacity-70" />
+                  </button>
+                  {toolsOpen ? (
+                    <div className="absolute left-1/2 top-[calc(100%+0.6rem)] z-50 w-72 -translate-x-1/2 rounded-2xl border border-[#102A20]/10 bg-white p-2 shadow-[0_16px_40px_-12px_rgba(16,42,32,0.25)]">
+                      {TOOL_LINKS.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setToolsOpen(false)}
+                            className="tap-press flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-jade-soft"
+                          >
+                            <span className="mt-0.5 grid size-8 place-items-center rounded-lg bg-jade-soft text-jade-accent">
+                              <Icon className="size-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2 text-sm font-medium text-jade-ink">
+                                {item.label}
+                                {item.soon ? (
+                                  <span className="rounded-full bg-jade-gold/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-jade-gold">
+                                    Soon
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {item.subtitle}
+                              </span>
+                            </span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </nav>
+            ) : (
+              <nav
+                aria-label="Guest"
+                className="inline-flex items-center rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
               >
-                + New session
+                <Link
+                  href={LEADERBOARD_HREF}
+                  className={cn(
+                    "tap-press rounded-full px-4 py-2 text-sm font-medium transition",
+                    boardActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70",
+                  )}
+                >
+                  Leaderboard
+                </Link>
+              </nav>
+            )}
+          </div>
+
+          {/* Right cluster */}
+          <div className="z-10 flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+            {loggedIn ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="tap-press hidden size-10 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink shadow-sm hover:bg-jade-soft md:grid"
+                  aria-label="Search players"
+                >
+                  <Search className="size-4" />
+                </button>
+
+                {liveCount > 0 ? (
+                  <Link
+                    href={liveHref}
+                    className="tap-press inline-flex h-9 max-w-[9.5rem] items-center gap-1.5 rounded-full bg-jade-accent px-3 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10 sm:max-w-none sm:px-3.5 sm:text-sm"
+                    title={`${liveCount} live table${liveCount === 1 ? "" : "s"}`}
+                  >
+                    <span className="jade-live-pulse size-2 shrink-0 rounded-full bg-white" />
+                    <span className="truncate">
+                      Live{liveCount > 1 ? ` · ${liveCount}` : ""}
+                    </span>
+                  </Link>
+                ) : (
+                  <Link
+                    href="/session/new"
+                    className="tap-press hidden h-10 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] md:inline-flex"
+                  >
+                    + New Table
+                  </Link>
+                )}
+
+                <div className="relative hidden md:block" ref={userRef}>
+                  <button
+                    type="button"
+                    onClick={() => setUserOpen((v) => !v)}
+                    className="tap-press grid size-10 place-items-center rounded-full bg-jade-ink font-mono text-[11px] font-semibold tracking-wide text-white"
+                    aria-label="Account menu"
+                  >
+                    {initials}
+                  </button>
+                  {userOpen ? (
+                    <div className="absolute right-0 top-[calc(100%+0.55rem)] z-50 w-52 rounded-2xl border border-[#102A20]/10 bg-white p-1.5 shadow-[0_16px_40px_-12px_rgba(16,42,32,0.25)]">
+                      <Link
+                        href={profileHref}
+                        onClick={() => setUserOpen(false)}
+                        className="tap-press flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm hover:bg-jade-soft"
+                      >
+                        <UserRound className="size-4 text-jade-accent" />
+                        My Profile
+                      </Link>
+                      {user?.role === "ADMIN" ? (
+                        <Link
+                          href="/admin/accounts"
+                          onClick={() => setUserOpen(false)}
+                          className="tap-press flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm hover:bg-jade-soft"
+                        >
+                          <Shield className="size-4 text-jade-accent" />
+                          Admin Panel
+                        </Link>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className="tap-press flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-jade-soft"
+                      >
+                        <LogOut className="size-4 text-jade-red" />
+                        Logout
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Mobile search / live already handled; live shows above */}
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="tap-press grid size-9 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink md:hidden"
+                  aria-label="Search players"
+                >
+                  <Search className="size-4" />
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className={cn(
+                  "tap-press inline-flex h-9 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10",
+                  !authReady && "opacity-70",
+                )}
+              >
+                Sign In
               </Link>
-              <AuthControls compact />
-            </nav>
+            )}
           </div>
         </div>
-      ) : null}
-    </header>
+      </header>
+
+      <SearchPlayerModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+    </>
   )
 }

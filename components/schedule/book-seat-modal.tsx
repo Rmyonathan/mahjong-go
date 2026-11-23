@@ -3,53 +3,79 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 
+import { DynamicQris } from "@/components/payment/dynamic-qris"
+import { whatsAppBookingConfirmUrl } from "@/lib/pro-payment"
+import { QRIS_AMOUNT } from "@/lib/qris"
 import {
+  boardLabel,
   formatFeeIdr,
-  type ScheduledMeet,
-} from "@/lib/mock/jade-schedule"
-import type { PaymentMethod } from "@/lib/schedule/booking-store"
+  type ApiMeet,
+  type ApiPaymentMethod,
+} from "@/lib/schedule/types"
 import { cn } from "@/lib/utils"
 
 export function BookSeatModal({
   open,
   meet,
-  seatNumber,
   onClose,
   onConfirm,
+  accountName,
 }: {
   open: boolean
-  meet: ScheduledMeet | null
-  /** Next seat that will be assigned on confirm */
-  seatNumber: number
+  meet: ApiMeet | null
   onClose: () => void
   onConfirm: (
-    method: PaymentMethod,
-  ) => { seatNumber: number; checkInCode: string } | null
+    method: ApiPaymentMethod,
+  ) => Promise<{ seatNumber: number; checkInCode: string } | null>
+  accountName?: string
 }) {
-  const [method, setMethod] = useState<PaymentMethod>("qris")
+  const [method, setMethod] = useState<ApiPaymentMethod>("QRIS")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [ticket, setTicket] = useState<{
     code: string
     seatNumber: number
-    method: PaymentMethod
+    method: ApiPaymentMethod
   } | null>(null)
 
   useEffect(() => {
     if (!open) {
       setTicket(null)
-      setMethod("qris")
+      setMethod("QRIS")
+      setError(null)
+      setPending(false)
     }
   }, [open])
 
   if (!open || !meet) return null
 
-  function confirm() {
-    const result = onConfirm(method)
-    if (!result) return
-    setTicket({
-      code: result.checkInCode,
-      seatNumber: result.seatNumber,
-      method,
-    })
+  const nextSeat = meet.confirmedCount + 1
+  const feeIdr = meet.feeIdr > 0 ? meet.feeIdr : QRIS_AMOUNT.BOOKING_DEFAULT
+  const waUrl = whatsAppBookingConfirmUrl({
+    accountName,
+    meetTitle: meet.title,
+    amountIdr: feeIdr,
+  })
+
+  async function confirm() {
+    setPending(true)
+    setError(null)
+    try {
+      const result = await onConfirm(method)
+      if (!result) {
+        setError("Booking failed")
+        return
+      }
+      setTicket({
+        code: result.checkInCode,
+        seatNumber: result.seatNumber,
+        method,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Booking failed")
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -60,7 +86,7 @@ export function BookSeatModal({
         className="absolute inset-0 bg-jade-ink/55"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-lg border-[2px] border-jade-ink bg-parchment shadow-[8px_8px_0_0_var(--jade-ink)] sm:mx-4">
+      <div className="relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto border-[2px] border-jade-ink bg-parchment shadow-[8px_8px_0_0_var(--jade-ink)] sm:mx-4">
         <div className="flex items-center justify-between border-b-[2px] border-jade-ink px-4 py-3">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -90,13 +116,13 @@ export function BookSeatModal({
                 <p className="mt-2 text-sm text-muted-foreground">{meet.location}</p>
                 <div className="mt-3 flex flex-wrap gap-2 font-mono text-[10px] uppercase tracking-[0.14em]">
                   <span className="border border-jade-ink bg-muted px-2 py-1">
-                    {meet.level}
+                    {boardLabel(meet.boardType)}
                   </span>
                   <span className="border border-jade-ink bg-card px-2 py-1">
-                    {formatFeeIdr(meet.feeIdr)}
+                    {formatFeeIdr(feeIdr)}
                   </span>
                   <span className="border border-jade-accent bg-jade-accent px-2 py-1 text-white">
-                    Seat #{seatNumber} of {meet.seatCap}
+                    Seat #{nextSeat} of {meet.maxSeats}
                   </span>
                 </div>
               </div>
@@ -108,8 +134,8 @@ export function BookSeatModal({
                 <div className="mt-2 flex flex-col gap-2">
                   {(
                     [
-                      ["qris", "Pay via QRIS (instant)"],
-                      ["venue", "Pay at venue"],
+                      ["QRIS", "Pay via QRIS (amount locked)"],
+                      ["VENUE", "Pay at venue"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -129,12 +155,37 @@ export function BookSeatModal({
                 </div>
               </fieldset>
 
+              {method === "QRIS" ? (
+                <>
+                  <DynamicQris
+                    amount={feeIdr}
+                    size={200}
+                    label={`Dynamic QRIS · seat fee`}
+                  />
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 w-full items-center justify-center border-[2px] border-jade-ink bg-card font-mono text-[11px] uppercase tracking-[0.16em]"
+                  >
+                    Confirm pay on WhatsApp
+                  </a>
+                </>
+              ) : null}
+
+              {error ? (
+                <p className="font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
+                  {error}
+                </p>
+              ) : null}
+
               <button
                 type="button"
+                disabled={pending}
                 onClick={confirm}
-                className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em]"
+                className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
               >
-                Confirm seat
+                {pending ? "Booking…" : "Confirm seat"}
               </button>
             </>
           ) : (
@@ -144,7 +195,7 @@ export function BookSeatModal({
               </p>
               <h3 className="font-serif text-3xl leading-none">{meet.title}</h3>
               <p className="font-mono text-sm uppercase tracking-[0.14em]">
-                Seat #{ticket.seatNumber} · You (Yonathan)
+                Seat #{ticket.seatNumber}
               </p>
               <p className="text-sm text-muted-foreground">{meet.whenLabel}</p>
               <div className="mx-auto grid size-36 place-items-center border-[2px] border-jade-ink bg-white p-3">
@@ -154,8 +205,7 @@ export function BookSeatModal({
                 {ticket.code}
               </p>
               <p className="text-center text-xs text-muted-foreground">
-                Paid via{" "}
-                {ticket.method === "qris" ? "QRIS (instant)" : "venue desk"} · show
+                Paid via {ticket.method === "QRIS" ? "QRIS" : "venue desk"} · show
                 this ticket at the lounge door.
               </p>
               <button
@@ -174,17 +224,12 @@ export function BookSeatModal({
 }
 
 function QrMark({ code }: { code: string }) {
-  // Editorial faux-QR: deterministic tile pattern from the check-in code.
   const cells = Array.from({ length: 81 }, (_, index) => {
     const char = code.charCodeAt(index % code.length) ?? 0
     return (char + index * 7) % 5 !== 0
   })
   return (
-    <div
-      className="grid size-full grid-cols-9 gap-0.5"
-      aria-hidden
-      title={code}
-    >
+    <div className="grid size-full grid-cols-9 gap-0.5" aria-hidden title={code}>
       {cells.map((filled, index) => (
         <span
           key={index}

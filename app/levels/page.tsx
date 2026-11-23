@@ -27,17 +27,18 @@ export default function LevelsPage() {
 
       <div className="relative">
         <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-          Pangkat · Levels & skill
+          Rank Tiers · Levels & skill
         </p>
         <h1 className="mt-3 max-w-3xl font-serif text-5xl uppercase leading-[0.9] tracking-tight sm:text-7xl">
-          Levels & skill rating
+          Rank tiers & skill
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed">
           Two stamps on every player card.{" "}
-          <strong className="font-medium">Experience Level</strong> is lifetime
-          progression — it only climbs as you clock more tables.{" "}
-          <strong className="font-medium">Skill Rating</strong> moves up or down
-          after every scored session. New seats start at{" "}
+          <strong className="font-medium">Experience Level</strong> climbs from
+          lifetime XP (sessions + weekly bounties) —{" "}
+          <span className="font-mono">25 XP</span> per LV, up to LV 100.{" "}
+          <strong className="font-medium">Skill Rating</strong> is Elo and moves
+          up or down after every scored session. New seats start at{" "}
           <span className="font-mono">{SKILL_START_RATING}</span>.
         </p>
         <div className="jade-divider mt-6" />

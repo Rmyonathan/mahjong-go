@@ -619,10 +619,38 @@ export function skillForPoints(points: number): SkillTier {
   )
 }
 
+function syntheticPlayer(id: string): JadePlayer {
+  const raw = id.startsWith("guest:")
+    ? id.slice("guest:".length).split(":")[0] ?? "Guest"
+    : id.startsWith("guest-")
+      ? id.slice("guest-".length)
+      : id
+  let label = raw
+  try {
+    label = decodeURIComponent(raw)
+  } catch {
+    /* keep raw */
+  }
+  label = label.replace(/-/g, " ").trim() || "Guest"
+  const nickname = label.split(/\s+/)[0] ?? "Guest"
+  return {
+    id,
+    name: label,
+    nickname,
+    initials: nickname.slice(0, 2).toUpperCase(),
+    city: "Bandar Lampung",
+    district: "Guest",
+    house: "Walk-in",
+    experienceLevelId: "pemula",
+    memberSince: new Date().toISOString().slice(0, 10),
+  }
+}
+
+/** Resolves seeded players, then guest / unknown live-table seats without throwing. */
 export function getPlayer(id: string): JadePlayer {
   const player = PLAYERS.find((entry) => entry.id === id)
-  if (!player) throw new Error(`jade-data: unknown player "${id}"`)
-  return player
+  if (player) return player
+  return syntheticPlayer(id)
 }
 
 export function getVenue(id: string): HouseVenue {

@@ -1,10 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { X } from "lucide-react"
+import { Calculator, X } from "lucide-react"
 
+import { getHkosPayout } from "@/lib/mahjong/payout"
 import {
-  DEMO_WINNING_HANDS,
   POINT_UNIT,
   computePayoutDeltas,
   type LiveSeat,
@@ -18,23 +19,29 @@ import type { ConfirmedScanHand } from "@/components/session/camera-scan-modal"
 export function ManualHandModal({
   open,
   seats,
+  sessionId,
   onClose,
   onConfirm,
 }: {
   open: boolean
   seats: LiveSeat[]
+  sessionId?: string
   onClose: () => void
   onConfirm: (hand: ConfirmedScanHand) => void
 }) {
-  const [demoIndex, setDemoIndex] = useState(0)
   const [winnerSeatIndex, setWinnerSeatIndex] = useState(0)
   const [method, setMethod] = useState<WinMethod>("discard")
   const [dealtBySeatIndex, setDealtBySeatIndex] = useState<number | null>(1)
-  // EDIT HERE — default manual points override (0 = use demo hand base)
-  const [customPoints, setCustomPoints] = useState(0)
+  // EDIT HERE — default fan when logging without the full tile calculator
+  const [fan, setFan] = useState(3)
+  const [comboLabel, setComboLabel] = useState("")
 
-  const demo = DEMO_WINNING_HANDS[demoIndex] ?? DEMO_WINNING_HANDS[0]
-  const winnerPoints = customPoints > 0 ? customPoints : demo.basePoints
+  const payout = useMemo(() => getHkosPayout(fan), [fan])
+  const winnerPoints = useMemo(() => {
+    const base =
+      method === "self-draw" ? payout.totalTsumo : payout.perOpponentRon
+    return base * POINT_UNIT
+  }, [method, payout])
 
   const deltas = useMemo(
     () =>
@@ -48,16 +55,27 @@ export function ManualHandModal({
     [seats.length, winnerSeatIndex, method, dealtBySeatIndex, winnerPoints],
   )
 
+  const combos = useMemo(() => {
+    const label =
+      comboLabel.trim() ||
+      (payout.isLimit ? "Limit hand" : `${fan} Fan HKOS`)
+    return [{ label, fan }]
+  }, [comboLabel, fan, payout.isLimit])
+
   useEffect(() => {
     if (!open) return
-    setDemoIndex(0)
     setWinnerSeatIndex(0)
     setMethod("discard")
     setDealtBySeatIndex(seats.length > 1 ? 1 : null)
-    setCustomPoints(0)
+    setFan(3)
+    setComboLabel("")
   }, [open, seats.length])
 
   if (!open) return null
+
+  const calculatorHref = sessionId
+    ? `/scan?applyToSession=${encodeURIComponent(sessionId)}`
+    : "/scan"
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -69,7 +87,7 @@ export function ManualHandModal({
       />
       <div className="relative z-10 w-full max-w-lg border-[2px] border-jade-ink bg-parchment shadow-[8px_8px_0_0_var(--jade-ink)] sm:mx-4">
         <div className="flex items-center justify-between border-b-[2px] border-jade-ink px-4 py-3">
-          <h2 className="font-serif text-2xl">Log hand manually</h2>
+          <h2 className="font-serif text-2xl">Log hand</h2>
           <button
             type="button"
             onClick={onClose}
@@ -79,27 +97,20 @@ export function ManualHandModal({
           </button>
         </div>
         <div className="space-y-4 p-4">
-          <div className="flex flex-wrap gap-2">
-            {DEMO_WINNING_HANDS.map((hand, index) => (
-              <button
-                key={hand.id}
-                type="button"
-                onClick={() => setDemoIndex(index)}
-                className={cn(
-                  "border-[2px] border-jade-ink px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]",
-                  index === demoIndex
-                    ? "bg-jade-ink text-white"
-                    : "bg-card",
-                )}
-              >
-                {hand.name}
-              </button>
-            ))}
-          </div>
+          <Link
+            href={calculatorHref}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 border-[2px] border-jade-ink bg-card px-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-[3px_3px_0_0_var(--jade-ink)]"
+          >
+            <Calculator className="size-4" />
+            Open tile calculator →
+          </Link>
           <p className="text-sm text-muted-foreground">
-            Uses demo tiles for the log. Point unit default is{" "}
-            <span className="font-mono">{POINT_UNIT}</span> (see live-demo).
+            Uses the HKOS payout table from{" "}
+            <span className="font-mono">lib/mahjong/payout</span> × unit{" "}
+            <span className="font-mono">{POINT_UNIT}</span>. Build the hand in
+            the calculator, or enter Fan here.
           </p>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -126,8 +137,8 @@ export function ManualHandModal({
                 onChange={(event) => setMethod(event.target.value as WinMethod)}
                 className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2"
               >
-                <option value="self-draw">Self-draw</option>
-                <option value="discard">Discard</option>
+                <option value="self-draw">Self-draw (tsumo)</option>
+                <option value="discard">Discard (ron)</option>
               </select>
             </label>
             <label className="block">
@@ -153,21 +164,49 @@ export function ManualHandModal({
             </label>
             <label className="block">
               <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                Custom points
+                Total Fan
               </span>
               <input
                 type="number"
-                min={0}
-                step={100}
-                value={customPoints || ""}
-                placeholder={String(demo.basePoints)}
+                min={1}
+                max={13}
+                value={fan}
                 onChange={(event) =>
-                  setCustomPoints(Number(event.target.value) || 0)
+                  setFan(Math.max(1, Math.min(13, Number(event.target.value) || 1)))
                 }
                 className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
               />
             </label>
+            <label className="block sm:col-span-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                Combo label (optional)
+              </span>
+              <input
+                value={comboLabel}
+                onChange={(event) => setComboLabel(event.target.value)}
+                placeholder="e.g. Half Flush + Seat Wind"
+                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 text-sm"
+              />
+            </label>
           </div>
+
+          <div className="jade-card grid grid-cols-2 gap-2 p-3 font-mono text-[10px] uppercase tracking-[0.12em]">
+            <div>
+              <p className="text-muted-foreground">Ron / lawan</p>
+              <p className="mt-0.5 text-sm">{payout.perOpponentRon}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Tsumo total</p>
+              <p className="mt-0.5 text-sm">{payout.totalTsumo}</p>
+            </div>
+            <div className="col-span-2 border-t border-jade-ink/25 pt-2">
+              <p className="text-muted-foreground">Club points (×{POINT_UNIT})</p>
+              <p className="mt-0.5 text-lg text-jade-accent">
+                {formatPlainPoints(winnerPoints)}
+              </p>
+            </div>
+          </div>
+
           <ul className="jade-card space-y-2 p-3">
             {seats.map((seat, index) => (
               <li
@@ -177,8 +216,8 @@ export function ManualHandModal({
                 <span>{seat.nickname}</span>
                 <span
                   className={cn(
-                    deltas[index]! > 0 && "text-jade-accent",
-                    deltas[index]! < 0 && "text-jade-red",
+                    (deltas[index] ?? 0) > 0 && "text-jade-accent",
+                    (deltas[index] ?? 0) < 0 && "text-jade-red",
                   )}
                 >
                   {formatSignedPoints(deltas[index] ?? 0)}
@@ -190,10 +229,9 @@ export function ManualHandModal({
             type="button"
             onClick={() =>
               onConfirm({
-                demoHandId: demo.id,
-                tileIds: demo.tileIds,
-                winningTileId: demo.winningTileId,
-                combos: demo.combos,
+                tileIds: [],
+                winningTileId: "",
+                combos,
                 points: winnerPoints,
                 winnerSeatIndex,
                 method,
@@ -204,7 +242,7 @@ export function ManualHandModal({
             }
             className="scan-cta inline-flex h-11 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em]"
           >
-            Log {formatPlainPoints(winnerPoints)} pts
+            Log {formatPlainPoints(winnerPoints)} pts · {fan}f
           </button>
         </div>
       </div>

@@ -3,7 +3,6 @@ import {
   PrismaClient,
   type BoardTier,
   type FormResult,
-  type WinMethod,
 } from "@prisma/client"
 import bcrypt from "bcryptjs"
 
@@ -11,9 +10,7 @@ import { PLAYERS } from "../lib/mock/jade-data"
 import {
   ACTIVE_SEASON,
   BOARD_STANDINGS,
-  RECENT_SESSIONS,
   SEASON_KPI,
-  SESSION_DETAILS,
   WIN_METHODS_SEASON,
 } from "../lib/mock/jade-board"
 
@@ -22,15 +19,12 @@ const prisma = new PrismaClient()
 async function main() {
   console.log("Seeding JadeMahjong…")
 
-  await prisma.handDelta.deleteMany()
-  await prisma.handCombo.deleteMany()
-  await prisma.hand.deleteMany()
-  await prisma.claimedCombo.deleteMany()
-  await prisma.sessionHighlight.deleteMany()
-  await prisma.sessionStanding.deleteMany()
+  await prisma.handRecord.deleteMany()
   await prisma.sessionSeat.deleteMany()
   await prisma.gameSession.deleteMany()
   await prisma.boardStanding.deleteMany()
+  await prisma.booking.deleteMany()
+  await prisma.meet.deleteMany()
   await prisma.user.deleteMany()
   await prisma.season.deleteMany()
   await prisma.player.deleteMany()
@@ -47,6 +41,8 @@ async function main() {
         house: player.house,
         experienceLevelId: player.experienceLevelId,
         memberSince: new Date(player.memberSince),
+        experienceXp: 0,
+        skillRating: 1500,
       },
     })
   }
@@ -95,161 +91,205 @@ async function main() {
     })
   }
 
-  for (const detail of Object.values(SESSION_DETAILS)) {
-    await prisma.gameSession.create({
-      data: {
-        id: detail.id,
-        seasonId: detail.seasonId,
-        title: detail.title,
-        venueName: detail.venueName,
-        district: detail.district,
-        startedAt: new Date(detail.startedAt),
-        endedAt: new Date(detail.endedAt),
-        status: detail.status,
-        seats: detail.seats,
-        games: detail.games,
-        handsWon: detail.handsWon,
-        draws: detail.draws,
-        biggestHand: detail.biggestHand,
-        durationMinutes: detail.durationMinutes,
-        winnerId: detail.standings[0]?.playerId ?? detail.playerIds[0],
-        selfDrawWins: detail.winMethods.selfDraw,
-        discardWins: detail.winMethods.discard,
-        seatPlayers: {
-          create: detail.playerIds.map((playerId, index) => ({
-            playerId,
-            seatOrder: index,
-          })),
-        },
-        standings: {
-          create: detail.standings.map((standing) => ({
-            playerId: standing.playerId,
-            rank: standing.rank,
-            net: standing.net,
-            wins: standing.wins,
-            selfDraw: standing.selfDraw,
-            dealtIn: standing.dealtIn,
-            form: standing.form as FormResult[],
-          })),
-        },
-        highlights: {
-          create: {
-            biggestHandPlayerId: detail.highlights.biggestHand.playerId,
-            biggestHandPoints: detail.highlights.biggestHand.points,
-            biggestHandCombo: detail.highlights.biggestHand.combo,
-            biggestPayoutPlayerId: detail.highlights.biggestPayout.playerId,
-            biggestPayoutPoints: detail.highlights.biggestPayout.points,
-            mostWinsPlayerId: detail.highlights.mostWins.playerId,
-            mostWins: detail.highlights.mostWins.wins,
-            longestDealPlayerId: detail.highlights.longestDeal.playerId,
-            longestDealHands: detail.highlights.longestDeal.hands,
-            mostDealtInPlayerId: detail.highlights.mostDealtIn.playerId,
-            mostDealtIn: detail.highlights.mostDealtIn.count,
-          },
-        },
-        claimedCombos: {
-          create: detail.claimedCombos.map((combo) => ({
-            label: combo.label,
-            count: combo.count,
-          })),
-        },
-      },
-    })
-
-    for (const hand of detail.hands) {
-      const method: WinMethod =
-        hand.method === "self-draw" ? "self_draw" : "discard"
-      await prisma.hand.create({
-        data: {
-          id: hand.id,
-          sessionId: detail.id,
-          handNo: hand.handNo,
-          winnerId: hand.winnerId,
-          method,
-          dealtById: hand.dealtById,
-          tileIds: hand.tileIds,
-          winningTileId: hand.winningTileId,
-          bonusTileIds: hand.bonusTileIds,
-          combos: {
-            create: hand.combos.map((combo) => ({
-              label: combo.label,
-              fan: combo.fan,
-            })),
-          },
-          deltas: {
-            create: Object.entries(hand.deltas).map(([playerId, delta]) => ({
-              playerId,
-              delta,
-            })),
-          },
-        },
-      })
-    }
-  }
-
-  // Recent sessions that don't have full detail yet.
-  for (const card of RECENT_SESSIONS) {
-    const exists = await prisma.gameSession.findUnique({ where: { id: card.id } })
-    if (exists) continue
-    await prisma.gameSession.create({
-      data: {
-        id: card.id,
-        seasonId: ACTIVE_SEASON.id,
-        title: card.title,
-        venueName: card.venueName,
-        district: "Bandar Lampung",
-        startedAt: new Date(card.startedAt),
-        endedAt: new Date(card.endedAt),
-        status: "finished",
-        seats: 4,
-        games: card.games,
-        handsWon: card.games,
-        draws: 0,
-        biggestHand: 0,
-        durationMinutes: card.durationMinutes,
-        winnerId: card.winnerId,
-        selfDrawWins: 0,
-        discardWins: 0,
-        seatPlayers: {
-          create: [
-            { playerId: card.winnerId, seatOrder: 0 },
-            { playerId: "sari-lestari", seatOrder: 1 },
-            { playerId: "lim-wie-hong", seatOrder: 2 },
-            { playerId: "dewi-anggraini", seatOrder: 3 },
-          ].filter(
-            (seat, index, arr) =>
-              arr.findIndex((entry) => entry.playerId === seat.playerId) === index,
-          ),
-        },
-      },
-    })
-  }
-
   const adminHash = await bcrypt.hash("getsuga39", 10)
-  await prisma.user.create({
+  const proExpiry = new Date()
+  proExpiry.setDate(proExpiry.getDate() + 365)
+
+  const admin = await prisma.user.create({
     data: {
       email: "admin@jade.local",
       name: "Jade Admin",
       passwordHash: adminHash,
       role: "ADMIN",
+      membershipTier: "PRO",
+      proExpiresAt: proExpiry,
       playerId: "hendra-wijaya",
     },
   })
 
   const memberHash = await bcrypt.hash("jade123", 10)
-  await prisma.user.create({
+  const member = await prisma.user.create({
     data: {
       email: "sari@jade.local",
       name: "Sari Lestari",
       passwordHash: memberHash,
       role: "MEMBER",
+      membershipTier: "PRO",
+      proExpiresAt: proExpiry,
       playerId: "sari-lestari",
     },
   })
 
-  console.log("Seed complete.")
-  console.log("Admin: admin@jade.local / getsuga39")
-  console.log("Member: sari@jade.local / jade123")
+  const freeHash = await bcrypt.hash("jade123", 10)
+  const freeMember = await prisma.user.create({
+    data: {
+      email: "andi@jade.local",
+      name: "Andi Saputra",
+      passwordHash: freeHash,
+      role: "MEMBER",
+      membershipTier: "FREE",
+      playerId: "andi-saputra",
+    },
+  })
+
+  const rina = await prisma.user.create({
+    data: {
+      email: "rina@jade.local",
+      name: "Rina Marlina",
+      passwordHash: freeHash,
+      role: "MEMBER",
+      membershipTier: "FREE",
+      playerId: "rina-marlina",
+    },
+  })
+  const eko = await prisma.user.create({
+    data: {
+      email: "eko@jade.local",
+      name: "Eko Prasetyo",
+      passwordHash: freeHash,
+      role: "MEMBER",
+      membershipTier: "FREE",
+      playerId: "eko-prasetyo",
+    },
+  })
+
+  // EDIT HERE — demo weekly meets for Schedule & Booking
+  const friday = await prisma.meet.create({
+    data: {
+      title: "Friday Night Jade League",
+      dateLabel: "Fri, 20 Nov",
+      startTime: "19:00",
+      endTime: "22:00",
+      startsAt: new Date("2026-11-20T19:00:00+07:00"),
+      endsAt: new Date("2026-11-20T22:00:00+07:00"),
+      location: "Jade Mahjong Lounge, Bandar Lampung",
+      boardType: "ADVANCED",
+      maxSeats: 12,
+      tables: 3,
+      feeIdr: 50_000,
+      status: "OPEN",
+      hostId: admin.id,
+    },
+  })
+
+  const guided = await prisma.meet.create({
+    data: {
+      title: "Saturday Afternoon Beginner Guided Table",
+      dateLabel: "Sat, 21 Nov",
+      startTime: "14:00",
+      endTime: "17:00",
+      startsAt: new Date("2026-11-21T14:00:00+07:00"),
+      endsAt: new Date("2026-11-21T17:00:00+07:00"),
+      location: "Jade Mahjong Lounge, Bandar Lampung",
+      boardType: "GUIDED",
+      maxSeats: 4,
+      tables: 1,
+      feeIdr: 75_000,
+      status: "FULL",
+      hostId: admin.id,
+    },
+  })
+
+  await prisma.booking.createMany({
+    data: [
+      {
+        meetId: guided.id,
+        userId: member.id,
+        status: "CONFIRMED",
+        paymentMethod: "QRIS",
+        seatNumber: 1,
+        checkInCode: "JADE-GUID-SEED01",
+      },
+      {
+        meetId: guided.id,
+        userId: freeMember.id,
+        status: "CONFIRMED",
+        paymentMethod: "VENUE",
+        seatNumber: 2,
+        checkInCode: "JADE-GUID-SEED02",
+      },
+      {
+        meetId: guided.id,
+        userId: rina.id,
+        status: "CONFIRMED",
+        paymentMethod: "VENUE",
+        seatNumber: 3,
+        checkInCode: "JADE-GUID-SEED03",
+      },
+      {
+        meetId: guided.id,
+        userId: admin.id,
+        status: "CONFIRMED",
+        paymentMethod: "VENUE",
+        seatNumber: 4,
+        checkInCode: "JADE-GUID-SEED04",
+      },
+      {
+        meetId: friday.id,
+        userId: admin.id,
+        status: "CONFIRMED",
+        paymentMethod: "QRIS",
+        seatNumber: 1,
+        checkInCode: "JADE-FRI-SEED01",
+      },
+      {
+        meetId: friday.id,
+        userId: member.id,
+        status: "CONFIRMED",
+        paymentMethod: "VENUE",
+        seatNumber: 2,
+        checkInCode: "JADE-FRI-SEED02",
+      },
+    ],
+  })
+
+  await prisma.meet.create({
+    data: {
+      title: "Sunday Competitive MCR Ranking",
+      dateLabel: "Sun, 22 Nov",
+      startTime: "18:30",
+      endTime: "22:00",
+      startsAt: new Date("2026-11-22T18:30:00+07:00"),
+      endsAt: new Date("2026-11-22T22:00:00+07:00"),
+      location: "Jade Mahjong Lounge, Bandar Lampung",
+      boardType: "MCR",
+      maxSeats: 8,
+      tables: 2,
+      feeIdr: 60_000,
+      status: "OPEN",
+      hostId: admin.id,
+    },
+  })
+
+  await prisma.meet.create({
+    data: {
+      title: "Tuesday Chill Tiles & Coffee",
+      dateLabel: "Tue, 24 Nov",
+      startTime: "19:00",
+      endTime: "22:00",
+      startsAt: new Date("2026-11-24T19:00:00+07:00"),
+      endsAt: new Date("2026-11-24T22:00:00+07:00"),
+      location: "Jade Mahjong Lounge, Bandar Lampung",
+      boardType: "BEGINNER",
+      maxSeats: 8,
+      tables: 2,
+      feeIdr: 40_000,
+      status: "OPEN",
+      hostId: admin.id,
+    },
+  })
+
+  console.log("Seeded users:", {
+    admin: admin.email,
+    member: member.email,
+    free: freeMember.email,
+    rina: rina.email,
+    eko: eko.email,
+  })
+  console.log(
+    "No FINISHED game sessions seeded — leaderboard uses mock until a live table is ended.",
+  )
+  console.log("Done.")
 }
 
 main()

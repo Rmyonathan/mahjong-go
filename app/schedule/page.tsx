@@ -1,74 +1,196 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { BookSeatModal } from "@/components/schedule/book-seat-modal"
+import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
 import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import {
-  formatFeeIdr,
-  type ScheduleLevelFilter,
-  type ScheduledMeet,
-} from "@/lib/mock/jade-schedule"
-import {
-  bookSeat,
-  canBookMeet,
-  cancelSeat,
-  earlyBirdRemainingMs,
+  boardLabel,
   formatCountdown,
-  joinWaitlist,
-  launchLiveHref,
-  leaveWaitlist,
-  loadBookingStore,
-  saveBookingStore,
-  type MemberView,
-  type PaymentMethod,
-  type ScheduleBookingStore,
-} from "@/lib/schedule/booking-store"
+  formatFeeIdr,
+  meetMatchesDateFilter,
+  type ApiMeet,
+  type ApiPaymentMethod,
+  type DateFilter,
+  type ScheduleViewer,
+} from "@/lib/schedule/types"
 import { cn } from "@/lib/utils"
 
-const FILTERS: { id: ScheduleLevelFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "beginner", label: "Beginner" },
-  { id: "advanced-mcr", label: "Advanced MCR" },
-  { id: "guided", label: "Guided table" },
+type BoardFilter = "all" | ApiMeet["boardType"]
+
+const DATE_FILTERS: { id: DateFilter; label: string }[] = [
+  { id: "all", label: "All dates" },
+  { id: "today", label: "Today" },
+  { id: "tomorrow", label: "Tomorrow" },
+  { id: "week", label: "This week" },
+  { id: "later", label: "Later" },
+]
+
+const BOARD_FILTERS: { id: BoardFilter; label: string }[] = [
+  { id: "all", label: "All levels" },
+  { id: "BEGINNER", label: "Beginner" },
+  { id: "ADVANCED", label: "Advanced" },
+  { id: "MCR", label: "Advanced MCR" },
+  { id: "GUIDED", label: "Guided table" },
 ]
 
 export default function SchedulePage() {
-  const [store, setStore] = useState<ScheduleBookingStore | null>(null)
-  const [filter, setFilter] = useState<ScheduleLevelFilter>("all")
+  const [meets, setMeets] = useState<ApiMeet[]>([])
+  const [viewer, setViewer] = useState<ScheduleViewer | null>(null)
+  const [membershipTier, setMembershipTier] = useState<"FREE" | "PRO">("FREE")
+  const [accountName, setAccountName] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all")
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>("all")
   const [now, setNow] = useState(Date.now())
   const [bookingMeetId, setBookingMeetId] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
   const [proOpen, setProOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [liveByMeetId, setLiveByMeetId] = useState<Record<string, string>>({})
+
+  const refresh = useCallback(async () => {
+    setError(null)
+    try {
+      const [scheduleRes, meRes, liveRes] = await Promise.all([
+        fetch("/api/schedule"),
+        fetch("/api/auth/me"),
+        fetch("/api/sessions"),
+      ])
+      const schedule = (await scheduleRes.json()) as {
+        meets?: ApiMeet[]
+        viewer?: ScheduleViewer | null
+        error?: string
+      }
+      if (!scheduleRes.ok) {
+        setError(schedule.error ?? "Could not load schedule")
+        return
+      }
+      setMeets(schedule.meets ?? [])
+      setViewer(schedule.viewer ?? null)
+
+      if (meRes.ok) {
+        const me = (await meRes.json()) as {
+          user?: {
+            membershipTier?: "FREE" | "PRO"
+            isPro?: boolean
+            role?: string
+            name?: string
+          } | null
+        }
+        if (me.user?.isPro || me.user?.role === "ADMIN") {
+          setMembershipTier("PRO")
+        } else if (me.user?.membershipTier) {
+          setMembershipTier(me.user.membershipTier)
+        }
+        if (me.user?.name) setAccountName(me.user.name)
+      }
+
+      if (liveRes.ok) {
+        const live = (await liveRes.json()) as {
+          liveSessions?: Array<{ id: string; meetId: string | null }>
+        }
+        const map: Record<string, string> = {}
+        for (const session of live.liveSessions ?? []) {
+          if (session.meetId) map[session.meetId] = session.id
+        }
+        setLiveByMeetId(map)
+      } else {
+        setLiveByMeetId({})
+      }
+    } catch {
+      setError("Network error loading schedule")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    setStore(loadBookingStore())
-  }, [])
+    void refresh()
+  }, [refresh])
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [])
 
-  function persist(next: ScheduleBookingStore) {
-    setStore(next)
-    saveBookingStore(next)
-  }
-
-  function setMemberView(view: MemberView) {
-    if (!store) return
-    persist({ ...store, memberView: view })
-  }
-
   const filtered = useMemo(() => {
-    if (!store) return []
-    if (filter === "all") return store.meets
-    return store.meets.filter((meet) => meet.levelFilter === filter)
-  }, [store, filter])
+    return meets.filter((meet) => {
+      const dateOk = meetMatchesDateFilter(meet.startsAt, dateFilter)
+      const boardOk =
+        boardFilter === "all" ? true : meet.boardType === boardFilter
+      return dateOk && boardOk
+    })
+  }, [meets, dateFilter, boardFilter])
 
-  const bookingMeet = store?.meets.find((meet) => meet.id === bookingMeetId) ?? null
+  const bookingMeet = meets.find((meet) => meet.id === bookingMeetId) ?? null
+  const isAdmin = viewer?.role === "ADMIN"
+  const isPro = membershipTier === "PRO" || isAdmin
 
-  if (!store) {
+  async function bookMeet(meetId: string, method: ApiPaymentMethod) {
+    const response = await fetch(`/api/schedule/${meetId}/book`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentMethod: method }),
+    })
+    const data = (await response.json()) as {
+      error?: string
+      booking?: {
+        seatNumber: number | null
+        checkInCode: string | null
+        status: string
+      }
+    }
+    if (!response.ok) throw new Error(data.error ?? "Booking failed")
+    await refresh()
+    if (data.booking?.status === "WAITLIST") {
+      throw new Error("Table full — you were added to the waitlist")
+    }
+    if (
+      data.booking?.status !== "CONFIRMED" ||
+      !data.booking.seatNumber ||
+      !data.booking.checkInCode
+    ) {
+      throw new Error("Unexpected booking response")
+    }
+    return {
+      seatNumber: data.booking.seatNumber,
+      checkInCode: data.booking.checkInCode,
+    }
+  }
+
+  async function cancelOrLeave(meetId: string) {
+    setActionError(null)
+    const response = await fetch(`/api/schedule/${meetId}/book`, {
+      method: "DELETE",
+    })
+    const data = (await response.json()) as { error?: string }
+    if (!response.ok) {
+      setActionError(data.error ?? "Could not cancel")
+      return
+    }
+    await refresh()
+  }
+
+  async function joinWaitlist(meetId: string) {
+    setActionError(null)
+    const response = await fetch(`/api/schedule/${meetId}/book`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentMethod: "VENUE" }),
+    })
+    const data = (await response.json()) as { error?: string }
+    if (!response.ok) {
+      setActionError(data.error ?? "Could not join waitlist")
+      return
+    }
+    await refresh()
+  }
+
+  if (loading) {
     return (
       <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
@@ -90,7 +212,7 @@ export default function SchedulePage() {
       <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            House calendar
+            House calendar · Postgres
           </p>
           <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] tracking-tight sm:text-7xl">
             Schedule & booking
@@ -101,103 +223,155 @@ export default function SchedulePage() {
           </p>
         </div>
 
-        <div
-          className="flex shrink-0 border-[2px] border-jade-ink bg-card"
-          role="group"
-          aria-label="Demo member view"
-        >
-          <span className="border-r-[2px] border-jade-ink px-3 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
-            Viewing as
-          </span>
-          {(
-            [
-              ["free", "Free member"],
-              ["pro", "Pro member"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setMemberView(id)}
-              className={cn(
-                "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                store.memberView === id
-                  ? "bg-jade-gold text-jade-ink"
-                  : "bg-card hover:bg-muted",
-              )}
+        <div className="flex flex-wrap items-center gap-2">
+          {viewer ? (
+            <span className="border-[2px] border-jade-ink bg-card px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]">
+              {viewer.name} · {isPro ? "Pro" : "Free"}
+            </span>
+          ) : (
+            <Link
+              href="/login"
+              className="border-[2px] border-jade-ink bg-card px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
             >
-              {label}
+              Login to book
+            </Link>
+          )}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-jade-accent px-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
+            >
+              + Create meet
             </button>
-          ))}
+          ) : null}
         </div>
       </div>
 
-      <div
-        className="relative mt-6 flex flex-wrap border-[2px] border-jade-ink"
-        role="tablist"
-        aria-label="Level filter"
-      >
-        {FILTERS.map((entry, index) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === entry.id}
-            onClick={() => setFilter(entry.id)}
-            className={cn(
-              "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-              index > 0 && "border-l-[2px] border-jade-ink",
-              filter === entry.id
-                ? "bg-jade-ink text-white"
-                : "bg-card hover:bg-muted",
-            )}
+      <div className="relative mt-6 space-y-3">
+        <div>
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            When
+          </p>
+          <div
+            className="flex flex-wrap border-[2px] border-jade-ink"
+            role="tablist"
+            aria-label="Date filter"
           >
-            {entry.label}
-          </button>
-        ))}
+            {DATE_FILTERS.map((entry, index) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={dateFilter === entry.id}
+                onClick={() => setDateFilter(entry.id)}
+                className={cn(
+                  "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  index > 0 && "border-l-[2px] border-jade-ink",
+                  dateFilter === entry.id
+                    ? "bg-jade-accent text-white"
+                    : "bg-card hover:bg-muted",
+                )}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            Level
+          </p>
+          <div
+            className="flex flex-wrap border-[2px] border-jade-ink"
+            role="tablist"
+            aria-label="Level filter"
+          >
+            {BOARD_FILTERS.map((entry, index) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={boardFilter === entry.id}
+                onClick={() => setBoardFilter(entry.id)}
+                className={cn(
+                  "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  index > 0 && "border-l-[2px] border-jade-ink",
+                  boardFilter === entry.id
+                    ? "bg-jade-ink text-white"
+                    : "bg-card hover:bg-muted",
+                )}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="jade-divider mt-6" />
 
-      <ul className="mt-8 grid gap-5 lg:grid-cols-2">
-        {filtered.map((meet) => (
-          <MeetCard
-            key={meet.id}
-            meet={meet}
-            memberView={store.memberView}
-            earlyBirdStartedAt={store.earlyBirdStartedAt}
-            now={now}
-            booking={store.bookings[meet.id]}
-            onBook={() => setBookingMeetId(meet.id)}
-            onCancel={() => persist(cancelSeat(store, meet.id))}
-            onWaitlist={() => persist(joinWaitlist(store, meet.id))}
-            onLeaveWaitlist={() => persist(leaveWaitlist(store, meet.id))}
-            onLocked={() => setProOpen(true)}
-          />
-        ))}
-      </ul>
+      {error ? (
+        <p className="mt-6 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
+          {error}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="mt-3 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
+          {actionError}
+        </p>
+      ) : null}
+
+      {filtered.length === 0 ? (
+        <div className="jade-card mt-8 px-5 py-10">
+          <p className="font-serif text-3xl">No meets on this filter.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {isAdmin
+              ? "Create the next weekly table for the house."
+              : "Check back soon — hosts post weekly seats here."}
+          </p>
+        </div>
+      ) : (
+        <ul className="mt-8 grid gap-5 lg:grid-cols-2">
+          {filtered.map((meet) => (
+            <MeetCard
+              key={meet.id}
+              meet={meet}
+              now={now}
+              isPro={isPro}
+              loggedIn={Boolean(viewer)}
+              liveSessionId={liveByMeetId[meet.id] ?? null}
+              onBook={() => setBookingMeetId(meet.id)}
+              onCancel={() => cancelOrLeave(meet.id)}
+              onWaitlist={() => joinWaitlist(meet.id)}
+              onLocked={() => setProOpen(true)}
+            />
+          ))}
+        </ul>
+      )}
 
       <BookSeatModal
-        open={Boolean(bookingMeetId && bookingMeet)}
+        open={Boolean(bookingMeet)}
         meet={bookingMeet}
-        seatNumber={(bookingMeet?.confirmed.length ?? 0) + 1}
+        accountName={accountName}
         onClose={() => setBookingMeetId(null)}
-        onConfirm={(method: PaymentMethod) => {
-          if (!bookingMeetId) return null
-          const result = bookSeat(store, bookingMeetId, method)
-          if (!result) return null
-          persist(result.store)
-          return {
-            seatNumber: result.seatNumber,
-            checkInCode: result.checkInCode,
-          }
+        onConfirm={async (method) => {
+          if (!bookingMeet) return null
+          return bookMeet(bookingMeet.id, method)
         }}
+      />
+
+      <CreateMeetModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => void refresh()}
       />
 
       <ProPerkModal
         open={proOpen}
         onClose={() => setProOpen(false)}
-        onSwitchPro={() => setMemberView("pro")}
+        accountName={accountName}
       />
     </main>
   )
@@ -205,43 +379,45 @@ export default function SchedulePage() {
 
 function MeetCard({
   meet,
-  memberView,
-  earlyBirdStartedAt,
   now,
-  booking,
+  isPro,
+  loggedIn,
+  liveSessionId,
   onBook,
   onCancel,
   onWaitlist,
-  onLeaveWaitlist,
   onLocked,
 }: {
-  meet: ScheduledMeet
-  memberView: MemberView
-  earlyBirdStartedAt: number
+  meet: ApiMeet
   now: number
-  booking: ScheduleBookingStore["bookings"][string]
+  isPro: boolean
+  loggedIn: boolean
+  liveSessionId: string | null
   onBook: () => void
   onCancel: () => void
   onWaitlist: () => void
-  onLeaveWaitlist: () => void
   onLocked: () => void
 }) {
-  const filled = meet.confirmed.length
-  const full = filled >= meet.seatCap
-  const remaining = earlyBirdRemainingMs(meet, earlyBirdStartedAt, now)
-  const earlyBirdActive = meet.proEarlyBird && remaining > 0
-  const unlocked = canBookMeet(meet, memberView, earlyBirdStartedAt, now)
-  const youBooked = Boolean(booking?.yourSeatNumber)
-  const youWaiting = Boolean(booking?.onWaitlist)
-  const preview = meet.confirmed.slice(0, 4)
-  const more = Math.max(0, meet.confirmed.length - preview.length)
-  const progress = Math.min(100, Math.round((filled / meet.seatCap) * 100))
+  const remaining = meet.proEarlyBirdUntil
+    ? Math.max(0, new Date(meet.proEarlyBirdUntil).getTime() - now)
+    : 0
+  const earlyBirdActive = remaining > 0
+  const locked =
+    (meet.proOnly || earlyBirdActive) && !isPro
+  const youConfirmed = meet.yourBooking?.status === "CONFIRMED"
+  const youWaiting = meet.yourBooking?.status === "WAITLIST"
+  const preview = meet.roster.slice(0, 4)
+  const more = Math.max(0, meet.roster.length - preview.length)
+  const progress = Math.min(
+    100,
+    Math.round((meet.confirmedCount / meet.maxSeats) * 100),
+  )
 
   return (
     <li className="jade-card flex flex-col overflow-hidden">
       {meet.proOnly ? (
         <div className="border-b-[2px] border-jade-ink bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
-          ★ Pro only{meet.hostCreated ? " · Host listing" : ""}
+          ★ Pro only
         </div>
       ) : earlyBirdActive ? (
         <div className="border-b-[2px] border-jade-ink bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
@@ -255,7 +431,7 @@ function MeetCard({
             {meet.whenLabel}
           </span>
           <span className="border border-jade-ink bg-muted px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {meet.level}
+            {boardLabel(meet.boardType)}
           </span>
           <span className="border border-jade-accent bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
             {formatFeeIdr(meet.feeIdr)}
@@ -268,7 +444,8 @@ function MeetCard({
         <div className="mt-4">
           <div className="mb-1.5 flex justify-between font-mono text-[10px] uppercase tracking-[0.14em]">
             <span>
-              {filled} / {meet.seatCap} seats filled ({meet.tables} tables)
+              {meet.confirmedCount} / {meet.maxSeats} seats filled ({meet.tables}{" "}
+              tables)
             </span>
             <span>{progress}%</span>
           </div>
@@ -276,7 +453,7 @@ function MeetCard({
             <div
               className={cn(
                 "h-full",
-                full ? "bg-jade-red" : "bg-jade-accent",
+                meet.isFull ? "bg-jade-red" : "bg-jade-accent",
               )}
               style={{ width: `${progress}%` }}
             />
@@ -288,22 +465,28 @@ function MeetCard({
             Confirmed roster
           </p>
           <ul className="mt-2 flex flex-wrap gap-2">
-            {preview.map((player) => (
-              <li
-                key={player.id}
-                className={cn(
-                  "inline-flex items-center gap-1.5 border border-jade-ink bg-card px-2 py-1",
-                  player.isYou && "border-jade-accent bg-muted",
-                )}
-              >
-                <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
-                  {player.badge}
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
-                  {player.nickname} · {player.rating}
-                </span>
+            {preview.length === 0 ? (
+              <li className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                No seats claimed yet
               </li>
-            ))}
+            ) : (
+              preview.map((player) => (
+                <li
+                  key={player.bookingId}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 border border-jade-ink bg-card px-2 py-1",
+                    player.isYou && "border-jade-accent bg-muted",
+                  )}
+                >
+                  <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
+                    {player.badge}
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
+                    {player.nickname} · {player.rating}
+                  </span>
+                </li>
+              ))
+            )}
             {more > 0 ? (
               <li className="inline-flex items-center border border-dashed border-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                 +{more} more
@@ -313,32 +496,39 @@ function MeetCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-2 pt-5">
-          {youBooked ? (
+          {!loggedIn ? (
+            <Link
+              href="/login"
+              className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+            >
+              Login to book →
+            </Link>
+          ) : youConfirmed ? (
             <button
               type="button"
               onClick={onCancel}
               className="inline-flex h-11 items-center justify-center border-[2px] border-jade-accent bg-jade-accent px-4 font-mono text-[11px] uppercase tracking-[0.16em] text-white"
             >
-              ✓ Seat confirmed (cancel)
+              ✓ Seat #{meet.yourBooking?.seatNumber} confirmed (cancel)
             </button>
-          ) : !unlocked ? (
+          ) : locked ? (
             <button
               type="button"
               onClick={onLocked}
               className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-muted px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
             >
               {meet.proOnly
-                ? "🔒 Pro only (upgrade)"
-                : "🔒 Pro early-bird only (upgrade)"}
+                ? "🔒 Pro only"
+                : "🔒 Pro early-bird only"}
             </button>
-          ) : full ? (
+          ) : meet.isFull ? (
             youWaiting ? (
               <button
                 type="button"
-                onClick={onLeaveWaitlist}
+                onClick={onCancel}
                 className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
               >
-                ✓ On waitlist ({meet.waitlist.length} waiting) · leave
+                ✓ On waitlist ({meet.waitlistCount} waiting) · leave
               </button>
             ) : (
               <button
@@ -346,7 +536,7 @@ function MeetCard({
                 onClick={onWaitlist}
                 className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
               >
-                Join waitlist ({meet.waitlist.length} waiting)
+                Join waitlist ({meet.waitlistCount} waiting)
               </button>
             )
           ) : (
@@ -360,10 +550,19 @@ function MeetCard({
           )}
 
           <Link
-            href={launchLiveHref(meet)}
-            className="inline-flex h-10 items-center justify-center border-[2px] border-jade-ink bg-parchment px-3 font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-muted"
+            href={
+              liveSessionId
+                ? `/session/live?id=${encodeURIComponent(liveSessionId)}`
+                : `/session/new?mode=live&title=${encodeURIComponent(meet.title)}&meet=${meet.id}`
+            }
+            className={cn(
+              "inline-flex h-10 items-center justify-center border-[2px] border-jade-ink px-3 font-mono text-[10px] uppercase tracking-[0.14em]",
+              liveSessionId
+                ? "bg-jade-accent text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
+                : "bg-parchment hover:bg-muted",
+            )}
           >
-            Launch live table →
+            {liveSessionId ? "● Open live table →" : "Launch live table →"}
           </Link>
         </div>
       </div>

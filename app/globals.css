@@ -14,6 +14,7 @@
   --color-parchment: var(--bg-parchment);
   --color-jade-ink: var(--jade-ink);
   --color-jade-accent: var(--jade-accent);
+  --color-jade-soft: var(--jade-soft);
   --color-jade-gold: var(--jade-gold);
   --color-jade-red: var(--jade-red);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -55,16 +56,17 @@
 }
 
 :root {
-  /* Kedai ledger — light jade wash over white paper. */
-  --bg-parchment: #E7F2EA; /* EDIT HERE to tweak background wash */
-  --bg-card: #FFFFFF; /* EDIT HERE to tweak card surface */
-  --jade-ink: #1B2A1E; /* EDIT HERE for primary text, borders & hard shadows */
-  --jade-accent: #2F6B45; /* EDIT HERE for active states & wins */
+  /* Fluid social-club palette — Luma warmth × Reclub emerald */
+  --bg-parchment: #F6F4EE; /* EDIT HERE: softer warm cream background */
+  --bg-card: #FFFFFF; /* EDIT HERE: crisp elevated card surface */
+  --jade-ink: #102A20; /* EDIT HERE: deep forest text */
+  --jade-accent: #16794C; /* EDIT HERE: vibrant emerald primary */
+  --jade-soft: #E6F2EC; /* EDIT HERE: soft emerald tint for active pills */
   --jade-gold: #B07A1A; /* EDIT HERE for 1st place & highlights */
   --jade-red: #A63C28; /* EDIT HERE for negative deltas & streaks */
-  --jade-muted: #D5E6DB;
-  --jade-muted-foreground: #4A5C4A;
-  --jade-input: #C8DCCF;
+  --jade-muted: #E8EDE8;
+  --jade-muted-foreground: #5A6B5E;
+  --jade-input: #D8E2DA;
 
   --background: var(--bg-parchment);
   --foreground: var(--jade-ink);
@@ -72,16 +74,16 @@
   --card-foreground: var(--jade-ink);
   --popover: var(--bg-card);
   --popover-foreground: var(--jade-ink);
-  --primary: var(--jade-ink);
+  --primary: var(--jade-accent);
   --primary-foreground: #ffffff;
-  --secondary: var(--jade-muted);
+  --secondary: var(--jade-soft);
   --secondary-foreground: var(--jade-ink);
   --muted: var(--jade-muted);
   --muted-foreground: var(--jade-muted-foreground);
-  --accent: var(--jade-muted);
+  --accent: var(--jade-soft);
   --accent-foreground: var(--jade-ink);
   --destructive: var(--jade-red);
-  --border: var(--jade-ink);
+  --border: color-mix(in srgb, var(--jade-ink) 14%, transparent);
   --input: var(--jade-input);
   --ring: var(--jade-accent);
   --chart-1: var(--jade-accent);
@@ -89,29 +91,31 @@
   --chart-3: var(--jade-red);
   --chart-4: var(--jade-ink);
   --chart-5: var(--jade-muted-foreground);
-  --radius: 0.2rem;
+  --radius: 1rem;
   --sidebar: var(--bg-card);
   --sidebar-foreground: var(--jade-ink);
-  --sidebar-primary: var(--jade-ink);
+  --sidebar-primary: var(--jade-accent);
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--jade-muted);
+  --sidebar-accent: var(--jade-soft);
   --sidebar-accent-foreground: var(--jade-ink);
-  --sidebar-border: var(--jade-ink);
+  --sidebar-border: color-mix(in srgb, var(--jade-ink) 12%, transparent);
   --sidebar-ring: var(--jade-accent);
+  --ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
-  --bg-parchment: #121C15;
-  --bg-card: #1A281E;
+  --bg-parchment: #0F1A14;
+  --bg-card: #16241C;
   --jade-ink: #E8DFC8;
-  --jade-accent: #4FA36A;
+  --jade-accent: #3FA86A;
+  --jade-soft: #1C3326;
   --jade-gold: #D4A24A;
   --jade-red: #D6644A;
-  --jade-muted: #243328;
+  --jade-muted: #1E2E24;
   --jade-muted-foreground: #B7C5B5;
   --jade-input: #2E4034;
-  --primary-foreground: #121C15;
-  --sidebar-primary-foreground: #121C15;
+  --primary-foreground: #0F1A14;
+  --sidebar-primary-foreground: #0F1A14;
 }
 
 @layer base {
@@ -121,20 +125,37 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(circle at 18% 12%, rgb(47 107 69 / 0.10), transparent 36%),
-      radial-gradient(circle at 82% 0%, rgb(255 255 255 / 0.85), transparent 30%),
-      linear-gradient(180deg, rgb(255 255 255 / 0.55), transparent 44%);
+      radial-gradient(circle at 12% 8%, rgb(22 121 76 / 0.08), transparent 38%),
+      radial-gradient(circle at 88% 0%, rgb(255 255 255 / 0.7), transparent 32%),
+      linear-gradient(180deg, rgb(255 255 255 / 0.45), transparent 42%);
   }
   html {
     @apply font-sans;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--jade-ink) 28%, transparent) transparent;
   }
   ::selection {
-    background: var(--jade-ink);
-    color: var(--bg-parchment);
+    background: var(--jade-accent);
+    color: #ffffff;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--jade-ink) 22%, transparent);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--jade-ink) 38%, transparent);
   }
   @media (max-width: 1023px) {
     body:has(.calculator-shell) .site-header,
-    body:has(.calculator-shell) .site-footer {
+    body:has(.calculator-shell) .site-footer,
+    body:has(.calculator-shell) .mobile-bottom-nav {
       @apply hidden;
     }
   }
@@ -148,48 +169,52 @@
 @layer components {
   .jade-card {
     background: var(--bg-card);
-    border: 2px solid var(--jade-ink);
-    box-shadow:
-      5px 5px 0 0 var(--jade-ink),
-      inset 0 0 0 1px color-mix(in srgb, var(--jade-ink) 18%, transparent);
+    border: 1px solid rgba(16, 42, 32, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px -2px rgba(16, 42, 32, 0.06);
+    transition: all 0.2s var(--ease-fluid);
+  }
+
+  .jade-card:hover {
+    box-shadow: 0 8px 28px -4px rgba(16, 42, 32, 0.1);
+    transform: translateY(-1px);
   }
 
   .jade-card-accent {
-    background: var(--bg-card);
-    border: 2px solid var(--jade-accent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--jade-soft) 55%, white), var(--bg-card));
+    border: 1px solid color-mix(in srgb, var(--jade-accent) 28%, transparent);
+    border-radius: 16px;
     box-shadow:
-      5px 5px 0 0 var(--jade-accent),
-      inset 0 0 0 1px color-mix(in srgb, var(--jade-accent) 22%, transparent);
+      0 4px 20px -2px rgba(22, 121, 76, 0.12),
+      0 0 0 1px color-mix(in srgb, var(--jade-accent) 8%, transparent);
+    transition: all 0.2s var(--ease-fluid);
   }
 
   .jade-card-gold {
-    background: var(--bg-card);
-    border: 2px solid var(--jade-gold);
-    box-shadow:
-      5px 5px 0 0 var(--jade-gold),
-      inset 0 0 0 1px color-mix(in srgb, var(--jade-gold) 22%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--jade-gold) 12%, white), var(--bg-card));
+    border: 1px solid color-mix(in srgb, var(--jade-gold) 35%, transparent);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px -2px rgba(176, 122, 26, 0.12);
+    transition: all 0.2s var(--ease-fluid);
   }
 
   .jade-divider {
-    height: 4px;
-    background:
-      repeating-linear-gradient(
-        90deg,
-        var(--jade-ink) 0 10px,
-        transparent 10px 14px
-      );
+    height: 1px;
+    background: color-mix(in srgb, var(--jade-ink) 12%, transparent);
+    border-radius: 999px;
   }
 
   .jade-rule {
     height: 1px;
-    background: var(--jade-ink);
-    box-shadow: 0 2px 0 0 color-mix(in srgb, var(--jade-ink) 28%, transparent);
+    background: color-mix(in srgb, var(--jade-ink) 12%, transparent);
   }
 
   .paper-grain {
     background-image:
-      radial-gradient(rgb(27 42 30 / 0.045) 0.6px, transparent 0.7px),
-      radial-gradient(rgb(47 107 69 / 0.05) 0.5px, transparent 0.6px);
+      radial-gradient(rgb(16 42 32 / 0.03) 0.6px, transparent 0.7px),
+      radial-gradient(rgb(22 121 76 / 0.035) 0.5px, transparent 0.6px);
     background-size: 3px 3px, 5px 5px;
     background-position: 0 0, 1px 2px;
   }
@@ -199,9 +224,10 @@
     place-items: center;
     width: 2.75rem;
     height: 2.75rem;
-    border: 2px solid var(--jade-ink);
+    border: 1px solid color-mix(in srgb, var(--jade-ink) 18%, transparent);
+    border-radius: 12px;
     background: color-mix(in srgb, var(--bg-card) 70%, var(--jade-gold) 30%);
-    box-shadow: 3px 3px 0 0 var(--jade-ink);
+    box-shadow: 0 4px 14px -4px rgba(16, 42, 32, 0.12);
     font-family: var(--font-serif), "Songti SC", "Noto Serif SC", serif;
     line-height: 1;
     transform: rotate(-4deg);
@@ -210,30 +236,45 @@
   .scan-desk {
     background-color: var(--bg-parchment);
     background-image:
-      radial-gradient(circle at 50% 0%, rgb(47 107 69 / 0.12), transparent 42%),
-      radial-gradient(rgb(27 42 30 / 0.045) 0.65px, transparent 0.7px);
+      radial-gradient(circle at 50% 0%, rgb(22 121 76 / 0.1), transparent 42%),
+      radial-gradient(rgb(16 42 32 / 0.035) 0.65px, transparent 0.7px);
     background-size: auto, 4px 4px;
     color: var(--jade-ink);
   }
 
   .scan-panel {
     background: var(--bg-card);
-    border: 2px solid var(--jade-ink);
-    box-shadow: 4px 4px 0 0 var(--jade-ink);
+    border: 1px solid rgba(16, 42, 32, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px -2px rgba(16, 42, 32, 0.06);
   }
 
   .scan-cta {
-    border: 2px solid var(--jade-ink);
+    border: 1px solid var(--jade-ink);
+    border-radius: 999px;
     background: var(--jade-ink);
     color: #ffffff;
-    box-shadow: 4px 4px 0 0 var(--jade-gold);
+    box-shadow: 0 4px 14px -4px rgba(16, 42, 32, 0.35);
+    transition: all 0.2s var(--ease-fluid);
+  }
+
+  .scan-cta:active,
+  .scan-cta-accent:active,
+  .tap-press:active {
+    transform: scale(0.98);
   }
 
   .scan-cta-accent {
-    border: 2px solid var(--jade-ink);
+    border: 1px solid var(--jade-accent);
+    border-radius: 999px;
     background: var(--jade-accent);
     color: #ffffff;
-    box-shadow: 4px 4px 0 0 var(--jade-ink);
+    box-shadow: 0 4px 14px -4px rgba(22, 121, 76, 0.4);
+    transition: all 0.2s var(--ease-fluid);
+  }
+
+  .tap-press {
+    transition: transform 0.15s var(--ease-fluid);
   }
 
   .jade-scan-laser {
@@ -267,6 +308,32 @@
     50% {
       opacity: 0.45;
       transform: scale(0.85);
+    }
+  }
+
+  .sheet-backdrop {
+    animation: sheet-fade 0.2s var(--ease-fluid);
+  }
+
+  .sheet-panel {
+    animation: sheet-up 0.28s var(--ease-fluid);
+  }
+
+  @keyframes sheet-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
     }
   }
 }

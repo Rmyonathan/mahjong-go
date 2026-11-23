@@ -10,6 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
+  const { isProMembership } = await import("@/lib/membership")
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },
     select: {
@@ -17,12 +18,20 @@ export async function GET() {
       email: true,
       name: true,
       role: true,
+      membershipTier: true,
+      proExpiresAt: true,
       playerId: true,
       createdAt: true,
       player: { select: { nickname: true, name: true } },
     },
   })
-  return NextResponse.json({ users })
+  return NextResponse.json({
+    users: users.map((user) => ({
+      ...user,
+      proExpiresAt: user.proExpiresAt?.toISOString() ?? null,
+      isPro: isProMembership(user),
+    })),
+  })
 }
 
 export async function POST(request: Request) {

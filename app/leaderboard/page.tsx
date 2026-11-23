@@ -5,6 +5,9 @@ import { ChevronRight } from "lucide-react"
 
 import { BoardFilters } from "@/components/jade/board-filters"
 import { FormSquares } from "@/components/jade/form-squares"
+import { ArchiveUpgradeTeaser } from "@/components/leaderboard/archive-upgrade-teaser"
+import { LeaderboardTvCast } from "@/components/leaderboard/tv-cast"
+import { getSessionUser } from "@/lib/auth"
 import {
   getActiveSeason,
   getDbBoardStandings,
@@ -13,6 +16,12 @@ import {
   getSeasonKpi,
   getWinMethodsSeason,
 } from "@/lib/data/board"
+import { prisma } from "@/lib/db"
+import {
+  FREE_SESSION_ARCHIVE_LIMIT,
+  isProMembership,
+} from "@/lib/membership"
+import { countFinishedSessions } from "@/lib/session/service"
 import {
   formatPlainPoints,
   formatSignedPoints,
@@ -31,7 +40,11 @@ export const metadata: Metadata = {
 }
 
 interface LeaderboardPageProps {
-  searchParams: Promise<{ q?: string | string[]; board?: string | string[] }>
+  searchParams: Promise<{
+    q?: string | string[]
+    board?: string | string[]
+    tv?: string | string[]
+  }>
 }
 
 function readParam(value: string | string[] | undefined) {
@@ -47,14 +60,59 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const params = await searchParams
   const query = readParam(params.q)
   const board = readBoard(readParam(params.board))
+  const tvMode = readParam(params.tv) === "1"
 
-  const [season, seasonKpi, winMethods, standings, recentSessions] = await Promise.all([
+  const [
+    season,
+    seasonKpi,
+    winMethods,
+    standings,
+    recentSessions,
+    finishedCount,
+    session,
+  ] = await Promise.all([
     getActiveSeason(),
     getSeasonKpi(),
     getWinMethodsSeason(),
-    getDbBoardStandings(board),
+    getDbBoardStandings(tvMode ? "all" : board),
     getRecentSessions(),
+    countFinishedSessions(),
+    getSessionUser(),
   ])
+  const usingLiveStats = finishedCount > 0
+
+  const viewerUser =
+    session != null
+      ? await prisma.user.findUnique({
+          where: { id: session.id },
+          select: {
+            name: true,
+            role: true,
+            membershipTier: true,
+            proExpiresAt: true,
+          },
+        })
+      : null
+  const canViewProfiles = Boolean(session)
+  const viewerIsPro = viewerUser ? isProMembership(viewerUser) : false
+  const visibleSessions = viewerIsPro
+    ? recentSessions
+    : recentSessions.slice(0, FREE_SESSION_ARCHIVE_LIMIT)
+  // Guests browse the board only — no Pro upsell / archive gate noise
+  const archiveLocked =
+    canViewProfiles &&
+    !viewerIsPro &&
+    recentSessions.length > FREE_SESSION_ARCHIVE_LIMIT
+
+  if (tvMode && season) {
+    return (
+      <LeaderboardTvCast
+        seasonLabel={season.label}
+        standings={standings}
+        usingLiveStats={usingLiveStats}
+      />
+    )
+  }
 
   if (!season || !seasonKpi) {
     return (
@@ -109,22 +167,34 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] tracking-tight sm:text-7xl">
           Leaderboard
         </h1>
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed">
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Every scored hand in {season.rangeLabel} at the Jade Mahjong tables,
           tallied to zero. {season.sessionsPlayed} sessions,{" "}
           {season.gamesPlayed} games, {season.hoursAtTable}h at the table.
         </p>
 
-        <div className="mt-6">
+        {!canViewProfiles ? (
+          <p className="mt-5 max-w-xl rounded-2xl border border-[#102A20]/10 bg-white/80 px-4 py-3 text-sm text-muted-foreground">
+            Browsing as guest — standings only.{" "}
+            <Link
+              href="/login"
+              className="font-semibold text-jade-accent underline-offset-2 hover:underline"
+            >
+              Sign in
+            </Link>{" "}
+            to open player profiles, schedule, ranks, combos, and club pages.
+          </p>
+        ) : null}
+
+        <div className="mt-8">
           <Suspense
             fallback={
-              <div className="h-10 border-[2px] border-jade-ink bg-card" aria-hidden />
+              <div className="h-10 rounded-full border border-[#102A20]/10 bg-white" aria-hidden />
             }
           >
             <BoardFilters seasonLabel={season.label} />
           </Suspense>
         </div>
-        <div className="jade-divider mt-6" />
       </div>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -184,9 +254,17 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                 </div>
                 <LevelBadge label={leader.experienceLevel.name} />
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-serif text-3xl leading-none sm:text-4xl">
-                    {leader.player.name}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-serif text-3xl leading-none sm:text-4xl">
+                      <PlayerName
+                        playerId={leader.playerId}
+                        name={leader.player.name}
+                        canViewProfiles={canViewProfiles}
+                        className="hover:underline"
+                      />
+                    </h3>
+                    {leader.isPro ? <ProBadge /> : null}
+                  </div>
                   <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                     {leader.player.nickname} · {leader.skillTier.name}
                   </p>
@@ -213,8 +291,20 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
             </article>
 
             <div className="flex flex-col gap-4">
-              {second ? <PodiumSide row={second} place={2} /> : null}
-              {third ? <PodiumSide row={third} place={3} /> : null}
+              {second ? (
+                <PodiumSide
+                  row={second}
+                  place={2}
+                  canViewProfiles={canViewProfiles}
+                />
+              ) : null}
+              {third ? (
+                <PodiumSide
+                  row={third}
+                  place={3}
+                  canViewProfiles={canViewProfiles}
+                />
+              ) : null}
             </div>
           </div>
         )}
@@ -256,13 +346,30 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   {boardRows.map((row) => (
                     <tr
                       key={row.playerId}
-                      className="border-b border-jade-ink/25 last:border-b-0"
+                      className={cn(
+                        "border-b border-jade-ink/25 last:border-b-0",
+                        row.isPro && "bg-gradient-to-r from-jade-gold/25 via-transparent to-jade-accent/10",
+                      )}
                     >
                       <td className="px-3 py-3 font-mono text-sm">
                         {String(row.rank).padStart(2, "0")}
                       </td>
                       <td className="px-3 py-3">
-                        <p className="font-serif text-lg leading-none">{row.player.name}</p>
+                        <div
+                          className={cn(
+                            "inline-flex max-w-full flex-wrap items-center gap-2",
+                            row.isPro &&
+                              "border-[2px] border-jade-gold shadow-[3px_3px_0_0_var(--jade-accent)] px-2 py-1",
+                          )}
+                        >
+                          <PlayerName
+                            playerId={row.playerId}
+                            name={row.player.name}
+                            canViewProfiles={canViewProfiles}
+                            className="font-serif text-lg leading-none hover:underline"
+                          />
+                          {row.isPro ? <ProBadge /> : null}
+                        </div>
                         <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                           {row.player.nickname} · {row.experienceLevel.name}
                         </p>
@@ -293,13 +400,28 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
             <ol className="flex flex-col gap-3 md:hidden">
               {boardRows.map((row) => (
-                <li key={row.playerId} className="jade-card px-3 py-3">
+                <li
+                  key={row.playerId}
+                  className={cn(
+                    "jade-card px-3 py-3",
+                    row.isPro &&
+                      "border-jade-gold shadow-[4px_4px_0_0_var(--jade-accent)]",
+                  )}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                         #{String(row.rank).padStart(2, "0")}
                       </p>
-                      <p className="font-serif text-xl leading-none">{row.player.name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <PlayerName
+                          playerId={row.playerId}
+                          name={row.player.name}
+                          canViewProfiles={canViewProfiles}
+                          className="font-serif text-xl leading-none hover:underline"
+                        />
+                        {row.isPro ? <ProBadge /> : null}
+                      </div>
                     </div>
                     <p className="font-mono text-sm">{formatSignedPoints(row.points)}</p>
                   </div>
@@ -319,31 +441,56 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
         <section aria-label="Recent sessions">
           <h2 className="font-serif text-3xl uppercase">Recent sessions</h2>
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            {!canViewProfiles
+              ? "Guest · preview only"
+              : viewerIsPro
+                ? "Pro archive · full history"
+                : `Free · last ${FREE_SESSION_ARCHIVE_LIMIT} sessions`}
+          </p>
           <div className="jade-divider mt-3" />
           <ol className="mt-4 flex flex-col gap-3">
-            {recentSessions.map((session) => {
-              const winner = playerMap.get(session.winnerId)
-              return (
-                <li key={session.id}>
-                  <Link
-                    href={`/session/${session.id}`}
-                    className="jade-card flex items-center justify-between gap-3 px-4 py-3 transition hover:translate-x-px hover:translate-y-px hover:shadow-none"
-                  >
-                    <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                        #{session.id} · {session.venueName} · {session.games} games
-                      </p>
-                      <p className="mt-1 font-serif text-xl leading-none">{session.title}</p>
-                      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
-                        Win · {winner?.nickname ?? "—"}
-                      </p>
-                    </div>
+            {visibleSessions.map((entry) => {
+              const winner = playerMap.get(entry.winnerId)
+              const body = (
+                <>
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      #{entry.id} · {entry.venueName} · {entry.games} games
+                    </p>
+                    <p className="mt-1 font-serif text-xl leading-none">
+                      {entry.title}
+                    </p>
+                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                      Win · {winner?.nickname ?? "—"}
+                    </p>
+                  </div>
+                  {canViewProfiles ? (
                     <ChevronRight className="size-4 shrink-0" />
-                  </Link>
+                  ) : null}
+                </>
+              )
+              return (
+                <li key={entry.id}>
+                  {canViewProfiles ? (
+                    <Link
+                      href={`/session/${entry.id}`}
+                      className="jade-card flex items-center justify-between gap-3 px-4 py-3 transition hover:translate-x-px hover:translate-y-px hover:shadow-none"
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="jade-card flex items-center justify-between gap-3 px-4 py-3">
+                      {body}
+                    </div>
+                  )}
                 </li>
               )
             })}
           </ol>
+          {archiveLocked ? (
+            <ArchiveUpgradeTeaser accountName={viewerUser?.name} />
+          ) : null}
         </section>
 
         <section aria-label="Win methods">
@@ -415,6 +562,14 @@ function StatCell({
   )
 }
 
+function ProBadge() {
+  return (
+    <span className="inline-flex border-[2px] border-jade-gold bg-jade-accent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-parchment">
+      Pro
+    </span>
+  )
+}
+
 function LevelBadge({ label }: { label: string }) {
   return (
     <div
@@ -426,22 +581,73 @@ function LevelBadge({ label }: { label: string }) {
   )
 }
 
-function PodiumSide({ row, place }: { row: BoardStandingRow; place: 2 | 3 }) {
+function PlayerName({
+  playerId,
+  name,
+  canViewProfiles,
+  className,
+}: {
+  playerId: string
+  name: string
+  canViewProfiles: boolean
+  className?: string
+}) {
+  if (!canViewProfiles) {
+    return <span className={className}>{name}</span>
+  }
   return (
-    <article className="jade-card flex items-center gap-3 p-4">
+    <Link href={`/players/${playerId}`} className={className}>
+      {name}
+    </Link>
+  )
+}
+
+function PodiumSide({
+  row,
+  place,
+  canViewProfiles,
+}: {
+  row: BoardStandingRow
+  place: 2 | 3
+  canViewProfiles: boolean
+}) {
+  const className = cn(
+    "jade-card flex items-center gap-3 p-4",
+    canViewProfiles &&
+      "transition hover:translate-x-px hover:translate-y-px hover:shadow-none",
+    row.isPro && "border-jade-gold shadow-[4px_4px_0_0_var(--jade-accent)]",
+  )
+  const content = (
+    <>
       <p className="font-mono text-3xl text-muted-foreground">{place}</p>
       <LevelBadge label={row.experienceLevel.name} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          <p className="truncate font-serif text-xl leading-none">{row.player.name}</p>
-          <ChevronRight className="size-4 shrink-0 text-jade-accent" aria-hidden />
+          <p className="truncate font-serif text-xl leading-none">
+            {row.player.name}
+          </p>
+          {row.isPro ? <ProBadge /> : null}
+          {canViewProfiles ? (
+            <ChevronRight
+              className="size-4 shrink-0 text-jade-accent"
+              aria-hidden
+            />
+          ) : null}
         </div>
         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
           {winRateLabel(row.winRate)} · {row.skillTier.name}
         </p>
       </div>
       <p className="font-mono text-sm">{formatSignedPoints(row.points)}</p>
-    </article>
+    </>
+  )
+  if (!canViewProfiles) {
+    return <div className={className}>{content}</div>
+  }
+  return (
+    <Link href={`/players/${row.playerId}`} className={className}>
+      {content}
+    </Link>
   )
 }
 
