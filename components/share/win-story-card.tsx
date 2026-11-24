@@ -4,6 +4,7 @@ import Image from "next/image"
 import { useRef, useState } from "react"
 import { Share2 } from "lucide-react"
 
+import { tileImageSrc } from "@/lib/mahjong/tile-image"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
 import { formatPlainPoints, formatSignedPoints } from "@/lib/mock/jade-board"
 import { shareOrDownloadImage } from "@/lib/share/capture"
@@ -132,12 +133,12 @@ export function ShareWinCardButton({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={`${id}-${index}`}
-                    src={`/tiles/${encodeURIComponent(tile.imagePath)}`}
+                    src={tileImageSrc(tile.imagePath)}
                     alt={tile.label}
-                    width={88}
+                    width={84}
                     height={112}
                     className={cn(
-                      "h-[112px] w-[88px] rounded-md border-[3px] border-[#1A1A1A] bg-white object-contain p-1",
+                      "h-[112px] w-[84px] rounded-md border-[3px] border-[#1A1A1A] bg-white object-cover object-center",
                       winning && "ring-8 ring-[#C9A227]",
                     )}
                   />

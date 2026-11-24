@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
@@ -126,39 +125,40 @@ export function SiteHeader() {
       .toUpperCase() || "?"
 
   const profileHref = user?.playerId ? `/players/${user.playerId}` : "/me"
-  const brandHref = loggedIn ? DASHBOARD_HREF : LEADERBOARD_HREF
+  const brandHref = loggedIn ? DASHBOARD_HREF : "/"
   // Always hub when multiple tables — never inflate the CTA label
   const liveHref = "/live"
+  const homeActive = pathname === "/"
 
   return (
     <>
       <header className="site-header sticky top-0 z-40 border-b border-[#102A20]/10 bg-[#F6F4EE]/85 backdrop-blur-md">
-        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-center gap-2 px-4 sm:gap-3 sm:px-6">
-          {/* Brand — never shrink away */}
+        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-4 sm:gap-3 sm:px-6">
+          {/* Brand — logo + title, never shrink away */}
           <Link
             href={brandHref}
-            className="tap-press z-10 flex min-w-0 shrink-0 items-center gap-2 text-jade-ink"
+            className="tap-press z-10 flex shrink-0 items-center gap-2.5 text-jade-ink"
             aria-label="Jade Mahjong home"
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/jade.png"
-              alt=""
-              width={40}
-              height={40}
-              priority
-              className="size-9 shrink-0 rounded-xl object-contain sm:size-10"
+              alt="Jade Mahjong"
+              width={36}
+              height={36}
+              className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-[#102A20]/10"
             />
-            <span className="truncate font-serif text-base font-semibold tracking-tight sm:text-lg">
+            <span className="font-serif text-base font-semibold tracking-tight sm:text-lg">
               Jade Mahjong
             </span>
           </Link>
 
-          {/* Desktop center nav */}
+          {/* Desktop center nav — no overflow scroll (was showing a scrollbar in the pill) */}
           <div className="hidden min-w-0 justify-center md:flex">
             {loggedIn ? (
               <nav
                 aria-label="Primary"
-                className="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
+                className="inline-flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
               >
                 <Link
                   href={SCHEDULE_HREF}
@@ -283,18 +283,51 @@ export function SiteHeader() {
             ) : (
               <nav
                 aria-label="Guest"
-                className="inline-flex items-center rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
+                className="inline-flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
               >
+                <Link
+                  href="/"
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    homeActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70",
+                  )}
+                >
+                  Home
+                </Link>
+                <Link
+                  href={SCHEDULE_HREF}
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    scheduleActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70",
+                  )}
+                >
+                  Schedule
+                </Link>
                 <Link
                   href={LEADERBOARD_HREF}
                   className={cn(
-                    "tap-press rounded-full px-4 py-2 text-sm font-medium transition",
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     boardActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70",
                   )}
                 >
                   Leaderboard
+                </Link>
+                <Link
+                  href="/about"
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    pathname === "/about" || pathname.startsWith("/about/")
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70",
+                  )}
+                >
+                  About
                 </Link>
               </nav>
             )}
@@ -378,7 +411,7 @@ export function SiteHeader() {
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="tap-press grid size-9 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink md:hidden"
+                  className="tap-press hidden size-9 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink min-[380px]:grid md:hidden"
                   aria-label="Search players"
                 >
                   <Search className="size-4" />

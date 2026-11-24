@@ -152,10 +152,10 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const winTotal = winMethods.selfDraw + winMethods.discard
 
   return (
-    <main className="relative mx-auto w-full max-w-7xl flex-1 overflow-hidden px-4 py-8 sm:px-6 sm:py-10">
+    <main className="relative mx-auto w-full max-w-7xl flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-10">
       <span
         aria-hidden
-        className="pointer-events-none absolute -right-4 top-0 select-none font-serif text-[12rem] leading-none text-jade-ink/[0.06] sm:text-[16rem]"
+        className="pointer-events-none absolute -right-4 top-0 hidden select-none font-serif text-[12rem] leading-none text-jade-ink/[0.06] sm:block sm:text-[16rem]"
       >
         玉
       </span>
@@ -164,10 +164,10 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
           Vol. 01 · {season.rangeLabel}
         </p>
-        <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] tracking-tight sm:text-7xl">
+        <h1 className="mt-2 font-serif text-4xl uppercase leading-[0.92] tracking-tight sm:mt-3 sm:text-7xl">
           Leaderboard
         </h1>
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:mt-4">
           Every scored hand in {season.rangeLabel} at the Jade Mahjong tables,
           tallied to zero. {season.sessionsPlayed} sessions,{" "}
           {season.gamesPlayed} games, {season.hoursAtTable}h at the table.
@@ -175,14 +175,14 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
         {!canViewProfiles ? (
           <p className="mt-5 max-w-xl rounded-2xl border border-[#102A20]/10 bg-white/80 px-4 py-3 text-sm text-muted-foreground">
-            Browsing as guest — standings only.{" "}
+            Guest view — names aren&apos;t links yet.{" "}
             <Link
               href="/login"
               className="font-semibold text-jade-accent underline-offset-2 hover:underline"
             >
               Sign in
             </Link>{" "}
-            to open player profiles, schedule, ranks, combos, and club pages.
+            to open player profiles and book seats.
           </p>
         ) : null}
 
@@ -197,7 +197,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         </div>
       </div>
 
-      <dl className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <dl className="mt-6 grid grid-cols-2 gap-2 sm:mt-8 sm:gap-3 lg:grid-cols-3">
         <KpiCard letter="A" label="Sessions played" value={String(seasonKpi.sessionsPlayed)} />
         <KpiCard letter="B" label="Games played" value={String(seasonKpi.gamesPlayed)} />
         <KpiCard
@@ -228,9 +228,9 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         />
       </dl>
 
-      <section className="mt-10" aria-label="On top">
-        <div className="mb-4 flex items-end justify-between gap-3">
-          <h2 className="font-serif text-3xl uppercase">On top</h2>
+      <section className="mt-8 sm:mt-10" aria-label="On top">
+        <div className="mb-3 flex items-end justify-between gap-3 sm:mb-4">
+          <h2 className="font-serif text-2xl uppercase sm:text-3xl">On top</h2>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             Board · {board}
           </p>
@@ -240,22 +240,22 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
             <p className="font-serif text-2xl">No players on this board yet.</p>
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-            <article className="jade-card-accent relative overflow-hidden p-5">
-              <span className="absolute right-4 top-4 border border-jade-accent bg-jade-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-parchment">
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <article className="jade-card-accent relative overflow-hidden p-4 sm:p-5">
+              <span className="absolute right-3 top-3 border border-jade-accent bg-jade-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-parchment sm:right-4 sm:top-4">
                 Leader
               </span>
-              <div className="flex items-start gap-4">
-                <div>
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="shrink-0">
                   <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                     Rank
                   </p>
-                  <p className="font-mono text-4xl text-jade-gold">1</p>
+                  <p className="font-mono text-3xl text-jade-gold sm:text-4xl">1</p>
                 </div>
                 <LevelBadge label={leader.experienceLevel.name} />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 pr-14 sm:pr-16">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-serif text-3xl leading-none sm:text-4xl">
+                    <h3 className="font-serif text-2xl leading-none sm:text-4xl">
                       <PlayerName
                         playerId={leader.playerId}
                         name={leader.player.name}
@@ -265,27 +265,27 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                     </h3>
                     {leader.isPro ? <ProBadge /> : null}
                   </div>
-                  <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:mt-2">
                     {leader.player.nickname} · {leader.skillTier.name}
                   </p>
-                  <p className="mt-4 font-mono text-4xl text-jade-accent sm:text-5xl">
+                  <p className="mt-3 font-mono text-3xl text-jade-accent sm:mt-4 sm:text-5xl">
                     {formatSignedPoints(leader.points)}
                   </p>
                 </div>
               </div>
-              <div className="mt-6 grid grid-cols-3 border-t-[2px] border-jade-accent/40 pt-4">
+              <div className="mt-4 grid grid-cols-3 border-t border-jade-accent/40 pt-3 sm:mt-6 sm:border-t-[2px] sm:pt-4">
                 <StatCell label="Win rate" value={winRateLabel(leader.winRate)} />
                 <StatCell
                   label="Biggest"
                   value={formatPlainPoints(leader.biggestHand)}
-                  className="border-x border-jade-accent/40 px-3"
+                  className="border-x border-jade-accent/40 px-2 sm:px-3"
                 />
                 <StatCell
                   label="Per session"
                   value={formatPlainPoints(
                     Math.round(leader.points / Math.max(season.sessionsPlayed, 1)),
                   )}
-                  className="pl-3"
+                  className="pl-2 sm:pl-3"
                 />
               </div>
             </article>
@@ -310,12 +310,12 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         )}
       </section>
 
-      <section className="mt-10" aria-label="Jade rank">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-serif text-3xl uppercase">Jade rank</h2>
+      <section className="mt-8 scroll-mt-24 sm:mt-10" aria-label="Jade rank">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 sm:mb-4">
+          <h2 className="font-serif text-2xl uppercase sm:text-3xl">Jade rank</h2>
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-full border-[2px] border-jade-ink bg-card px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]"
+            className="inline-flex items-center gap-2 rounded-full border border-[#102A20]/15 bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em]"
           >
             <span className="size-1.5 rounded-full bg-jade-accent" aria-hidden />
             Follow live
@@ -398,38 +398,42 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               </table>
             </div>
 
-            <ol className="flex flex-col gap-3 md:hidden">
+            <ol className="flex flex-col gap-2 md:hidden">
               {boardRows.map((row) => (
                 <li
                   key={row.playerId}
                   className={cn(
-                    "jade-card px-3 py-3",
+                    "jade-card px-3 py-2.5",
                     row.isPro &&
                       "border-jade-gold shadow-[4px_4px_0_0_var(--jade-accent)]",
                   )}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <span className="w-7 shrink-0 font-mono text-[11px] text-muted-foreground">
                         #{String(row.rank).padStart(2, "0")}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <PlayerName
-                          playerId={row.playerId}
-                          name={row.player.name}
-                          canViewProfiles={canViewProfiles}
-                          className="font-serif text-xl leading-none hover:underline"
-                        />
-                        {row.isPro ? <ProBadge /> : null}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <PlayerName
+                            playerId={row.playerId}
+                            name={row.player.name}
+                            canViewProfiles={canViewProfiles}
+                            className="truncate font-serif text-base leading-none hover:underline"
+                          />
+                          {row.isPro ? <ProBadge /> : null}
+                        </div>
+                        <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                          {winRateLabel(row.winRate)}
+                        </p>
                       </div>
                     </div>
-                    <p className="font-mono text-sm">{formatSignedPoints(row.points)}</p>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-jade-ink/25 pt-3">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.12em]">
-                      {winRateLabel(row.winRate)}
-                    </span>
-                    <FormSquares form={row.form} />
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <p className="font-mono text-sm">
+                        {formatSignedPoints(row.points)}
+                      </p>
+                      <FormSquares form={row.form} />
+                    </div>
                   </div>
                 </li>
               ))}
@@ -438,10 +442,12 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         )}
       </section>
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+      <div className="mt-8 grid gap-8 sm:mt-10 lg:grid-cols-2 lg:gap-6">
         <section aria-label="Recent sessions">
-          <h2 className="font-serif text-3xl uppercase">Recent sessions</h2>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          <h2 className="font-serif text-2xl uppercase sm:text-3xl">
+            Recent sessions
+          </h2>
+          <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:mt-2">
             {!canViewProfiles
               ? "Guest · preview only"
               : viewerIsPro
@@ -449,24 +455,29 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                 : `Free · last ${FREE_SESSION_ARCHIVE_LIMIT} sessions`}
           </p>
           <div className="jade-divider mt-3" />
-          <ol className="mt-4 flex flex-col gap-3">
+          <ol className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3">
             {visibleSessions.map((entry) => {
               const winner = playerMap.get(entry.winnerId)
               const body = (
                 <>
-                  <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                      #{entry.id} · {entry.venueName} · {entry.games} games
-                    </p>
-                    <p className="mt-1 font-serif text-xl leading-none">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full bg-jade-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-jade-accent">
+                        {entry.games} games
+                      </span>
+                      <span className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        {entry.venueName}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 truncate font-serif text-lg leading-tight sm:text-xl">
                       {entry.title}
                     </p>
-                    <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                    <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
                       Win · {winner?.nickname ?? "—"}
                     </p>
                   </div>
                   {canViewProfiles ? (
-                    <ChevronRight className="size-4 shrink-0" />
+                    <ChevronRight className="size-4 shrink-0 text-jade-ink/40" />
                   ) : null}
                 </>
               )
@@ -475,12 +486,12 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   {canViewProfiles ? (
                     <Link
                       href={`/session/${entry.id}`}
-                      className="jade-card flex items-center justify-between gap-3 px-4 py-3 transition hover:translate-x-px hover:translate-y-px hover:shadow-none"
+                      className="jade-card flex items-center gap-3 px-3.5 py-3 transition active:scale-[0.99] sm:px-4"
                     >
                       {body}
                     </Link>
                   ) : (
-                    <div className="jade-card flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="jade-card flex items-center gap-3 px-3.5 py-3 sm:px-4">
                       {body}
                     </div>
                   )}
@@ -494,9 +505,11 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         </section>
 
         <section aria-label="Win methods">
-          <h2 className="font-serif text-3xl uppercase">Win methods</h2>
+          <h2 className="font-serif text-2xl uppercase sm:text-3xl">
+            Win methods
+          </h2>
           <div className="jade-divider mt-3" />
-          <div className="jade-card mt-4 space-y-5 p-4">
+          <div className="jade-card mt-3 space-y-4 p-3.5 sm:mt-4 sm:space-y-5 sm:p-4">
             <WinBar
               label="Self-draw"
               value={winMethods.selfDraw}
@@ -530,15 +543,21 @@ function KpiCard({
   valueClassName?: string
 }) {
   return (
-    <div className="jade-card relative px-4 py-4">
-      <span className="absolute right-3 top-2 font-mono text-[10px] text-muted-foreground">
+    <div className="jade-card relative px-3 py-3 sm:px-4 sm:py-4">
+      <span className="absolute right-2.5 top-2 font-mono text-[10px] text-muted-foreground sm:right-3">
         {letter}
       </span>
-      <dt className="pr-6 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+      <dt className="pr-5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </dt>
-      <dd className={cn("mt-3 font-mono text-2xl sm:text-3xl", valueClassName)}>{value}</dd>
-      {subtitle ? <p className="mt-2 text-xs text-muted-foreground">{subtitle}</p> : null}
+      <dd className={cn("mt-2 font-mono text-xl sm:mt-3 sm:text-3xl", valueClassName)}>
+        {value}
+      </dd>
+      {subtitle ? (
+        <p className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:mt-2 sm:text-xs">
+          {subtitle}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -612,18 +631,19 @@ function PodiumSide({
   canViewProfiles: boolean
 }) {
   const className = cn(
-    "jade-card flex items-center gap-3 p-4",
-    canViewProfiles &&
-      "transition hover:translate-x-px hover:translate-y-px hover:shadow-none",
+    "jade-card flex items-center gap-2.5 p-3 sm:gap-3 sm:p-4",
+    canViewProfiles && "transition active:scale-[0.99]",
     row.isPro && "border-jade-gold shadow-[4px_4px_0_0_var(--jade-accent)]",
   )
   const content = (
     <>
-      <p className="font-mono text-3xl text-muted-foreground">{place}</p>
+      <p className="w-5 shrink-0 font-mono text-2xl text-muted-foreground sm:text-3xl">
+        {place}
+      </p>
       <LevelBadge label={row.experienceLevel.name} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          <p className="truncate font-serif text-xl leading-none">
+          <p className="truncate font-serif text-lg leading-none sm:text-xl">
             {row.player.name}
           </p>
           {row.isPro ? <ProBadge /> : null}
@@ -634,11 +654,13 @@ function PodiumSide({
             />
           ) : null}
         </div>
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground sm:mt-2">
           {winRateLabel(row.winRate)} · {row.skillTier.name}
         </p>
       </div>
-      <p className="font-mono text-sm">{formatSignedPoints(row.points)}</p>
+      <p className="shrink-0 font-mono text-sm">
+        {formatSignedPoints(row.points)}
+      </p>
     </>
   )
   if (!canViewProfiles) {

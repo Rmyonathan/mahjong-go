@@ -17,15 +17,18 @@ export function GameLog({ session }: { session: SessionDetail }) {
 
   return (
     <section className="jade-card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b-[2px] border-jade-ink px-4 py-3">
-        <h2 className="font-serif text-2xl">Game log</h2>
-        <div className="flex border-[2px] border-jade-ink" role="tablist">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#102A20]/10 px-3 py-3 sm:gap-3 sm:px-4">
+        <h2 className="font-serif text-xl sm:text-2xl">Game log</h2>
+        <div
+          className="flex rounded-full bg-[#F6F4EE] p-0.5"
+          role="tablist"
+        >
           {(
             [
               ["hands", "Hands"],
-              ["scoreboard", "Scoreboard"],
+              ["scoreboard", "Board"],
             ] as const
-          ).map(([id, label], index) => (
+          ).map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -33,11 +36,10 @@ export function GameLog({ session }: { session: SessionDetail }) {
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               className={cn(
-                "px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]",
-                index > 0 && "border-l-[2px] border-jade-ink",
+                "rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition",
                 tab === id
-                  ? "bg-jade-ink text-parchment"
-                  : "bg-card text-jade-ink",
+                  ? "bg-jade-accent text-white shadow-sm"
+                  : "text-jade-ink/65",
               )}
             >
               {label}
@@ -134,15 +136,17 @@ function HandRow({
   }
 
   return (
-    <li className="px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm tracking-wider">
+    <li className="px-3 py-3.5 sm:px-4 sm:py-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <span className="font-mono text-xs tracking-wider text-muted-foreground sm:text-sm">
               {String(hand.handNo).padStart(2, "0")}
             </span>
-            <span className="font-serif text-xl leading-none">{winner.name}</span>
-            <span className="border border-jade-ink px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">
+            <span className="truncate font-serif text-lg leading-none sm:text-xl">
+              {winner.name}
+            </span>
+            <span className="rounded-full bg-jade-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-jade-accent">
               {hand.method === "self-draw"
                 ? "Self-draw"
                 : `Off ${dealtBy?.nickname ?? "—"}`}
@@ -152,7 +156,7 @@ function HandRow({
             {hand.combos.map((combo) => (
               <span
                 key={`${hand.id}-${combo.label}`}
-                className="border border-jade-ink bg-parchment px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]"
+                className="rounded-full border border-[#102A20]/10 bg-[#F6F4EE] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] sm:text-[10px]"
               >
                 {combo.label} {combo.fan}
               </span>
@@ -162,14 +166,15 @@ function HandRow({
         <button
           type="button"
           onClick={shareHand}
-          className="inline-flex items-center gap-1.5 border-[2px] border-jade-ink bg-card px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em]"
+          className="tap-press inline-flex shrink-0 items-center gap-1 rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.12em] sm:text-[10px]"
+          aria-label="Share this hand"
         >
           <Share2 className="size-3" />
-          Share this hand
+          <span className="hidden sm:inline">Share</span>
         </button>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 -mx-1 overflow-x-auto px-1">
         <TileStrip ids={hand.tileIds} winningId={hand.winningTileId} size="xs" />
         {hand.bonusTileIds.length > 0 ? (
           <div className="mt-2">
@@ -181,16 +186,19 @@ function HandRow({
         ) : null}
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 border-t border-jade-ink/25 pt-3 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-jade-ink/15 pt-3">
         {playerIds.map((playerId) => {
           const player = getPlayer(playerId)
           const delta = hand.deltas[playerId] ?? 0
           return (
-            <div key={playerId} className="font-mono text-[10px] uppercase tracking-[0.12em]">
-              <p className="text-muted-foreground">{player.nickname}</p>
+            <div
+              key={playerId}
+              className="min-w-0 font-mono text-[9px] uppercase tracking-[0.1em] sm:text-[10px]"
+            >
+              <p className="truncate text-muted-foreground">{player.nickname}</p>
               <p
                 className={cn(
-                  "mt-0.5 text-sm",
+                  "mt-0.5 text-xs sm:text-sm",
                   delta > 0 && "text-jade-accent",
                   delta < 0 && "text-jade-red",
                 )}

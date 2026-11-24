@@ -34,14 +34,20 @@ function buildDateLabel(date: string) {
   }).format(value)
 }
 
+type MemberOption = { id: string; name: string; nickname?: string }
+
 export function CreateMeetModal({
   open,
   onClose,
   onCreated,
+  isClubOwner = false,
+  isProHost = false,
 }: {
   open: boolean
   onClose: () => void
   onCreated: () => void
+  isClubOwner?: boolean
+  isProHost?: boolean
 }) {
   // EDIT HERE — host create defaults
   const [title, setTitle] = useState("Friday Teluk Beginner")
@@ -54,14 +60,44 @@ export function CreateMeetModal({
   const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
   const [proOnly, setProOnly] = useState(false)
   const [earlyBirdHours, setEarlyBirdHours] = useState(2)
+  const [captainId, setCaptainId] = useState("")
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PUBLIC")
+  const [members, setMembers] = useState<MemberOption[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createdInvite, setCreatedInvite] = useState<string | null>(null)
+
+  const scanLabel =
+    isClubOwner || isProHost ? "Unlimited scans" : "3 scans (Free host)"
 
   useEffect(() => {
     if (!open) return
     setError(null)
     setPending(false)
-  }, [open])
+    setCreatedInvite(null)
+    if (isClubOwner) {
+      void fetch("/api/members")
+        .then(async (response) => {
+          if (!response.ok) return
+          const data = (await response.json()) as {
+            members?: Array<{
+              userId?: string
+              id?: string
+              name: string
+              nickname?: string
+            }>
+          }
+          setMembers(
+            (data.members ?? []).map((m) => ({
+              id: m.userId ?? m.id ?? "",
+              name: m.name,
+              nickname: m.nickname,
+            })).filter((m) => m.id),
+          )
+        })
+        .catch(() => {})
+    }
+  }, [open, isClubOwner])
 
   if (!open) return null
 
@@ -101,13 +137,23 @@ export function CreateMeetModal({
           maxSeats,
           tables,
           feeIdr,
-          proOnly,
-          proEarlyBirdUntil,
+          proOnly: isClubOwner ? proOnly : false,
+          proEarlyBirdUntil: isClubOwner ? proEarlyBirdUntil : null,
+          captainId: isClubOwner && captainId ? captainId : null,
+          visibility,
         }),
       })
-      const data = (await response.json()) as { error?: string }
+      const data = (await response.json()) as {
+        error?: string
+        meet?: { inviteCode?: string | null }
+      }
       if (!response.ok) {
         setError(data.error ?? "Could not create meet")
+        return
+      }
+      if (data.meet?.inviteCode) {
+        setCreatedInvite(data.meet.inviteCode)
+        onCreated()
         return
       }
       onCreated()
@@ -131,7 +177,7 @@ export function CreateMeetModal({
         <div className="sticky top-0 flex items-center justify-between border-b-[2px] border-jade-ink bg-parchment px-4 py-3">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Host desk
+              {isClubOwner ? "Club owner desk" : "Player table"}
             </p>
             <h2 className="font-serif text-2xl">Create meet</h2>
           </div>
@@ -266,44 +312,141 @@ export function CreateMeetModal({
             </label>
           </div>
 
-          <div className="flex border-[2px] border-jade-ink">
-            <button
-              type="button"
-              onClick={() => setProOnly(false)}
-              className={cn(
-                "flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                !proOnly ? "bg-jade-ink text-white" : "bg-card",
-              )}
-            >
-              Open to all
-            </button>
-            <button
-              type="button"
-              onClick={() => setProOnly(true)}
-              className={cn(
-                "flex-1 border-l-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                proOnly ? "bg-jade-gold text-jade-ink" : "bg-card",
-              )}
-            >
-              Pro only
-            </button>
+          <fieldset>
+            <legend className="font-mono text-[10px] uppercase tracking-[0.14em]">
+              Visibility
+            </legend>
+            <div className="mt-2 flex border-[2px] border-jade-ink">
+              <button
+                type="button"
+                onClick={() => setVisibility("PUBLIC")}
+                className={cn(
+                  "flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  visibility === "PUBLIC" ? "bg-jade-ink text-white" : "bg-card",
+                )}
+              >
+                Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility("PRIVATE")}
+                className={cn(
+                  "flex-1 border-l-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  visibility === "PRIVATE"
+                    ? "bg-jade-accent text-white"
+                    : "bg-card",
+                )}
+              >
+                Private · invite
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {visibility === "PRIVATE"
+                ? "Only people with your invite code/link can find and request a seat."
+                : "Anyone on the schedule can see and request a seat."}
+            </p>
+          </fieldset>
+
+          <div className="rounded-xl border border-[#102A20]/10 bg-jade-soft/60 px-3 py-2.5 text-xs text-jade-ink">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+              Scan policy
+            </p>
+            <p className="mt-1">
+              {isClubOwner
+                ? "Club table — unlimited scans. Pick a captain who can run the camera."
+                : isProHost
+                  ? "Pro host — unlimited scans on this table."
+                  : "Free host — this table gets 3 camera scans."}{" "}
+              ({scanLabel})
+            </p>
           </div>
 
-          <label className="block">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-              Pro early-bird hours (default 2 · 0 = none)
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={72}
-              value={earlyBirdHours}
-              onChange={(event) =>
-                setEarlyBirdHours(Math.max(0, Number(event.target.value) || 0))
-              }
-              className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
-            />
-          </label>
+          {createdInvite ? (
+            <div className="rounded-xl border border-jade-gold/40 bg-white p-4 text-sm">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-gold">
+                Private invite ready
+              </p>
+              <p className="mt-2 font-mono text-lg font-semibold tracking-wide">
+                {createdInvite}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Share this code so friends can unlock your table on Schedule.
+              </p>
+              <button
+                type="button"
+                className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-full bg-jade-accent text-sm font-semibold text-white"
+                onClick={() => {
+                  void navigator.clipboard.writeText(createdInvite)
+                  onClose()
+                }}
+              >
+                Copy code · Done
+              </button>
+            </div>
+          ) : null}
+
+          {isClubOwner ? (
+            <>
+              <div className="flex border-[2px] border-jade-ink">
+                <button
+                  type="button"
+                  onClick={() => setProOnly(false)}
+                  className={cn(
+                    "flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                    !proOnly ? "bg-jade-ink text-white" : "bg-card",
+                  )}
+                >
+                  Open to all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProOnly(true)}
+                  className={cn(
+                    "flex-1 border-l-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                    proOnly ? "bg-jade-gold text-jade-ink" : "bg-card",
+                  )}
+                >
+                  Pro only
+                </button>
+              </div>
+
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                  Pro early-bird hours (default 2 · 0 = none)
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={72}
+                  value={earlyBirdHours}
+                  onChange={(event) =>
+                    setEarlyBirdHours(
+                      Math.max(0, Number(event.target.value) || 0),
+                    )
+                  }
+                  className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
+                />
+              </label>
+
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                  Table captain (who can scan)
+                </span>
+                <select
+                  value={captainId}
+                  onChange={(event) => setCaptainId(event.target.value)}
+                  className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 text-sm"
+                >
+                  <option value="">Me (club owner)</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.nickname ?? member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
 
           {error ? (
             <p className="font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
@@ -311,14 +454,16 @@ export function CreateMeetModal({
             </p>
           ) : null}
 
-          <button
-            type="button"
-            disabled={pending}
-            onClick={submit}
-            className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
-          >
-            {pending ? "Publishing…" : "Publish meet"}
-          </button>
+          {!createdInvite ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={submit}
+              className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
+            >
+              {pending ? "Publishing…" : "Publish meet"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

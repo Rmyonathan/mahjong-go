@@ -16,13 +16,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
-import { ArrowDownUp, Trash2, Trophy } from "lucide-react"
+import { ArrowDownUp, Camera, Trash2, Trophy } from "lucide-react"
 
 import { AiAnalysisDialog, type StrategySelection } from "@/components/mahjong/ai-analysis-dialog"
 import { AiCoachHud } from "@/components/mahjong/ai-coach-hud"
 import { AiSuggestions } from "@/components/mahjong/ai-suggestions"
 import { GameContextControls } from "@/components/mahjong/game-context-controls"
 import { WinScoreDialog } from "@/components/mahjong/win-score-dialog"
+import { PhotoScanModal } from "@/components/scan/photo-scan-modal"
 import { calculateHandScore } from "@/lib/mahjong/engine"
 import type { ScoreResult } from "@/lib/mahjong/engine"
 import { suggestTargetHands } from "@/lib/mahjong/suggestions"
@@ -96,6 +97,7 @@ export function CalculatorWorkspace() {
   })
   const [winDialogOpen, setWinDialogOpen] = React.useState(false)
   const [winScore, setWinScore] = React.useState<ScoreResult | null>(null)
+  const [photoScanOpen, setPhotoScanOpen] = React.useState(false)
 
   const desktopSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -183,6 +185,29 @@ export function CalculatorWorkspace() {
   const clearHand = React.useCallback(() => {
     setMainHand([])
     setFlowerHand([])
+    setTrackedTargets([])
+    setActiveTarget(null)
+  }, [])
+
+  /** Apply Gemini-detected tiles into the calculator; scoring stays in engine. */
+  const applyScannedTiles = React.useCallback((tiles: Tile[]) => {
+    const nextMain: HandTile[] = []
+    const nextFlower: HandTile[] = []
+    for (const tile of tiles) {
+      if (tile.category === "bonus") {
+        if (nextFlower.length >= MAX_FLOWER_TILES) continue
+        const existing = nextFlower.filter((t) => t.id === tile.id).length
+        if (existing >= tile.copies) continue
+        nextFlower.push({ ...tile, instanceId: createInstanceId() })
+      } else {
+        if (nextMain.length >= MAX_MAIN_TILES) continue
+        const existing = nextMain.filter((t) => t.id === tile.id).length
+        if (existing >= tile.copies) continue
+        nextMain.push({ ...tile, instanceId: createInstanceId() })
+      }
+    }
+    setMainHand(nextMain)
+    setFlowerHand(nextFlower)
     setTrackedTargets([])
     setActiveTarget(null)
   }, [])
@@ -376,11 +401,29 @@ export function CalculatorWorkspace() {
         initialLegendary={initialLegendary}
         onConfirm={handleConfirmStrategy}
       />
+      <PhotoScanModal
+        open={photoScanOpen}
+        onClose={() => setPhotoScanOpen(false)}
+        onApply={applyScannedTiles}
+      />
     </>
   )
 
   const handControls = (compact?: boolean) => (
     <>
+      <Button
+        type="button"
+        variant="outline"
+        size={compact ? "icon-sm" : "sm"}
+        onClick={() => setPhotoScanOpen(true)}
+        className={cn(
+          "border-[2px] border-jade-ink bg-card text-jade-ink shadow-[3px_3px_0_0_var(--jade-ink)] hover:bg-muted",
+          compact && "touch-manipulation",
+        )}
+      >
+        <Camera className="size-3.5" />
+        {compact ? <span className="sr-only">Scan foto</span> : "Scan foto"}
+      </Button>
       <Button
         type="button"
         variant="outline"

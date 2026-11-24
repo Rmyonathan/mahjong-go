@@ -8,7 +8,10 @@ import { Share2 } from "lucide-react"
 import { FormSquares } from "@/components/jade/form-squares"
 import { TileStrip } from "@/components/jade/tile-strip"
 import { HandLogModal } from "@/components/session/hand-log-modal"
-import type { ConfirmedScanHand } from "@/components/session/camera-scan-modal"
+import {
+  CameraScanModal,
+  type ConfirmedScanHand,
+} from "@/components/session/camera-scan-modal"
 import { SessionNewspaperButton } from "@/components/share/session-newspaper"
 import { ShareWinCardButton } from "@/components/share/win-story-card"
 import {
@@ -56,6 +59,7 @@ function LiveSessionInner() {
   const [ready, setReady] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [handLogOpen, setHandLogOpen] = useState(false)
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
   const [isPro, setIsPro] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -155,6 +159,7 @@ function LiveSessionInner() {
       }
       setSession(data.session)
       setHandLogOpen(false)
+      setCameraScanOpen(false)
       return true
     } catch {
       setActionError("Network error logging hand")
@@ -374,18 +379,14 @@ function LiveSessionInner() {
             🀄 Log hand · HKOS calculator
           </button>
         </div>
-        <div className="relative inline-flex">
-          <button
-            type="button"
-            disabled
-            className="inline-flex h-12 cursor-not-allowed items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] opacity-50"
-          >
-            📷 Camera scan
-          </button>
-          <span className="pointer-events-none absolute -right-1 -top-2 border-[2px] border-jade-ink bg-jade-gold px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-jade-ink shadow-[2px_2px_0_0_var(--jade-ink)]">
-            Coming soon
-          </span>
-        </div>
+        <button
+          type="button"
+          disabled={busy || !isCaptain}
+          onClick={() => setCameraScanOpen(true)}
+          className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
+        >
+          📷 Camera scan
+        </button>
         <button
           type="button"
           disabled={busy || !isCaptain}
@@ -439,6 +440,15 @@ function LiveSessionInner() {
         seats={session.seats}
         onClose={() => setHandLogOpen(false)}
         onConfirm={logConfirmed}
+      />
+      <CameraScanModal
+        open={cameraScanOpen}
+        seats={session.seats}
+        onClose={() => setCameraScanOpen(false)}
+        onConfirm={(hand) => {
+          setCameraScanOpen(false)
+          logConfirmed(hand)
+        }}
       />
     </main>
   )

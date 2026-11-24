@@ -12,6 +12,8 @@ import {
 import {
   DEFAULT_MEET_FEE_IDR,
   DEFAULT_MEET_LOCATION,
+  readSavedInviteCodes,
+  writeSavedInviteCodes,
   type ApiMeet,
   type ApiMeetBoardType,
 } from "@/lib/schedule/types"
@@ -123,7 +125,9 @@ function NewSessionForm() {
     SCHEDULE_VENUES[0] ?? DEFAULT_MEET_LOCATION,
   )
   const [levelId, setLevelId] = useState<ScheduleLevel>("BEGINNER")
-  const [proOnly, setProOnly] = useState(true)
+  const [proOnly, setProOnly] = useState(false)
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PUBLIC")
+  const [isAdmin, setIsAdmin] = useState(false)
   const [tables, setTables] = useState(1)
   const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
 
@@ -134,6 +138,18 @@ function NewSessionForm() {
   const [seats, setSeats] = useState<SeatDraft[]>(() => emptySeats(4))
   const [error, setError] = useState<string | null>(null)
   const [booted, setBooted] = useState(false)
+
+  useEffect(() => {
+    void fetch("/api/auth/me")
+      .then(async (response) => {
+        if (!response.ok) return
+        const data = (await response.json()) as {
+          user?: { role?: string } | null
+        }
+        setIsAdmin(data.user?.role === "ADMIN")
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (booted) return
@@ -342,13 +358,23 @@ function NewSessionForm() {
           maxSeats: seatCap,
           tables,
           feeIdr,
-          proOnly,
+          proOnly: isAdmin ? proOnly : false,
+          visibility,
         }),
       })
-      const data = (await response.json()) as { error?: string }
+      const data = (await response.json()) as {
+        error?: string
+        meet?: { inviteCode?: string | null; invitePath?: string | null }
+      }
       if (!response.ok) {
-        setError(data.error ?? "Could not publish meet (admin login required)")
+        setError(data.error ?? "Could not publish meet")
         return
+      }
+      if (data.meet?.inviteCode) {
+        writeSavedInviteCodes([
+          ...readSavedInviteCodes(),
+          data.meet.inviteCode,
+        ])
       }
       router.push("/schedule")
       router.refresh()
@@ -553,35 +579,74 @@ function NewSessionForm() {
 
             <fieldset>
               <legend className="font-mono text-[10px] uppercase tracking-[0.16em]">
-                Who can book
+                Visibility
               </legend>
               <div className="mt-2 flex border-[2px] border-jade-ink">
                 <button
                   type="button"
-                  onClick={() => setProOnly(false)}
+                  onClick={() => setVisibility("PUBLIC")}
                   className={cn(
                     "flex-1 px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em]",
-                    !proOnly
+                    visibility === "PUBLIC"
                       ? "bg-jade-ink text-white"
                       : "bg-card hover:bg-muted",
                   )}
                 >
-                  Open to all
+                  Public
                 </button>
                 <button
                   type="button"
-                  onClick={() => setProOnly(true)}
+                  onClick={() => setVisibility("PRIVATE")}
                   className={cn(
                     "flex-1 border-l-[2px] border-jade-ink px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em]",
-                    proOnly
-                      ? "bg-jade-gold text-jade-ink"
+                    visibility === "PRIVATE"
+                      ? "bg-jade-accent text-white"
                       : "bg-card hover:bg-muted",
                   )}
                 >
-                  Pro only
+                  Private · invite
                 </button>
               </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {visibility === "PRIVATE"
+                  ? "Friends join with your invite code or link."
+                  : "Listed on the public schedule."}
+              </p>
             </fieldset>
+
+            {isAdmin ? (
+              <fieldset>
+                <legend className="font-mono text-[10px] uppercase tracking-[0.16em]">
+                  Who can book · club owner
+                </legend>
+                <div className="mt-2 flex border-[2px] border-jade-ink">
+                  <button
+                    type="button"
+                    onClick={() => setProOnly(false)}
+                    className={cn(
+                      "flex-1 px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em]",
+                      !proOnly
+                        ? "bg-jade-ink text-white"
+                        : "bg-card hover:bg-muted",
+                    )}
+                  >
+                    Open to all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProOnly(true)}
+                    className={cn(
+                      "flex-1 border-l-[2px] border-jade-ink px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em]",
+                      proOnly
+                        ? "bg-jade-gold text-jade-ink"
+                        : "bg-card hover:bg-muted",
+                    )}
+                  >
+                    Pro only
+                  </button>
+                </div>
+              </fieldset>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
@@ -627,7 +692,7 @@ function NewSessionForm() {
               <br />
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                 {date} · {startTime}–{endTime} · {location} · {levelMeta.label}
-                {proOnly ? " · Pro only" : " · Open"}
+                {isAdmin && proOnly ? " · Pro only" : " · Open"}
               </span>
             </div>
 

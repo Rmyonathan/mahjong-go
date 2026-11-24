@@ -25,11 +25,25 @@ function MobileBottomNavInner() {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const tvMode = searchParams.get("tv") === "1"
+  const [scanModalOpen, setScanModalOpen] = useState(false)
   const hideChrome =
     tvMode ||
+    scanModalOpen ||
     pathname.startsWith("/calculator") ||
     pathname.startsWith("/hk") ||
     pathname.startsWith("/admin")
+
+  useEffect(() => {
+    const sync = () =>
+      setScanModalOpen(document.body.dataset.scanModal === "1")
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-scan-modal"],
+    })
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     setPlayOpen(false)
@@ -96,7 +110,7 @@ function MobileBottomNavInner() {
     (link) => pathname === link.href || pathname.startsWith(`${link.href}/`),
   )
 
-  // Guests: leaderboard + sign in only
+  // Guests: browse home, schedule, ranks — sign in to participate
   if (!loggedIn) {
     return (
       <nav
@@ -104,10 +118,22 @@ function MobileBottomNavInner() {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Mobile guest"
       >
-        <div className="mx-auto grid h-[4.25rem] max-w-lg grid-cols-2 items-end px-2 pb-2 pt-1">
+        <div className="mx-auto grid h-[4.25rem] max-w-lg grid-cols-4 items-end px-1 pb-2 pt-1">
+          <TabLink
+            href="/"
+            label="Home"
+            active={pathname === "/"}
+            icon={LayoutGrid}
+          />
+          <TabLink
+            href="/schedule"
+            label="Schedule"
+            active={scheduleActive}
+            icon={CalendarDays}
+          />
           <TabLink
             href="/leaderboard"
-            label="Leaderboard"
+            label="Ranks"
             active={ranksActive}
             icon={Trophy}
           />

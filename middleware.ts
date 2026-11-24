@@ -4,15 +4,33 @@ import { jwtVerify } from "jose"
 
 const COOKIE = "jade_session"
 
-/** EDIT HERE — routes guests may open without signing in */
-const PUBLIC_PREFIXES = ["/login", "/leaderboard"]
+/**
+ * EDIT HERE — pages guests may browse without signing in.
+ * Login still required for booking seats, live tables, /me, /admin, etc.
+ */
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/leaderboard",
+  "/schedule",
+  "/combos",
+  "/levels",
+  "/calculator",
+  "/scan", // calculator workspace ( /calculator redirects here )
+  "/about",
+  "/coaching",
+  "/puzzle",
+  "/hk",
+]
 
-/** Auth endpoints guests need to sign in / check session */
+/** Public APIs guests need for browse pages (mutations still auth-check in-route). */
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/me",
   "/api/auth/logout",
+  "/api/schedule",
+  "/api/puzzle/today",
+  "/api/scan", // Gemini tile detect for /scan calculator (guests OK)
 ]
 
 function isPublicPath(pathname: string) {
@@ -26,19 +44,6 @@ function isPublicPath(pathname: string) {
   }
   return PUBLIC_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  )
-}
-
-function isStaticAsset(pathname: string) {
-  return (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/tiles") ||
-    pathname === "/favicon.ico" ||
-    pathname === "/manifest.json" ||
-    pathname === "/jade.png" ||
-    pathname === "/QRIS.jpeg" ||
-    pathname === "/qris-static.svg" ||
-    /\.[a-zA-Z0-9]+$/.test(pathname)
   )
 }
 
@@ -61,8 +66,6 @@ async function readSession(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
-  if (isStaticAsset(pathname)) return NextResponse.next()
-
   const session = await readSession(request)
 
   // Admin desk — Jade admin only
@@ -78,7 +81,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Guests: leaderboard + login only
   if (!session && !isPublicPath(pathname)) {
     const login = new URL("/login", request.url)
     login.searchParams.set("next", `${pathname}${search}`)
@@ -89,5 +91,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  // Never run auth on Next internals or static image/asset files
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|tiles/|.*\\.(?:png|jpg|jpeg|svg|webp|ico|gif|woff2?)$).*)",
+  ],
 }

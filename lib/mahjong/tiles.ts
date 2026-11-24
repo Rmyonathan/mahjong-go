@@ -95,8 +95,9 @@ const SEASON_ORDER: SeasonType[] = ["spring", "summer", "autumn", "winter"];
 const SUIT_ORDER: SuitType[] = ["dots", "bamboo", "characters"];
 
 // ---------------------------------------------------------------------------
-// Pemetaan nama berkas foto ubin (public/tiles). Cocok persis dengan berkas
-// di disk (case-sensitive untuk hosting produksi). Semua berekstensi .jpeg.
+// Pemetaan nama berkas foto ubin (public/tiles). Sumber: public/new tiles,
+// diproses 3:4 + brightness via `node scripts/process-tiles.mjs`.
+// Nama berkas case-sensitive di hosting produksi. Semua .jpeg.
 // ---------------------------------------------------------------------------
 
 /** Kata suit pada nama berkas, mis. `5 ${SUIT_FILE.dots}.jpeg` → `5 Bulat.jpeg`. */

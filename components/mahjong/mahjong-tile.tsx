@@ -2,22 +2,23 @@ import * as React from "react"
 // Foto ubin dirender lewat komponen Image bawaan Next.js.
 import Image from "next/image"
 
+import { tileImageSrc } from "@/lib/mahjong/tile-image"
 import type { Tile } from "@/lib/mahjong/types"
 import { cn } from "@/lib/utils"
 
 type TileSize = "xs" | "sm" | "md" | "lg" | "xl"
 
-// Dimensi kontainer per ukuran + `sizes` untuk pemuatan gambar responsif.
+// Exact 3:4 face — width-driven so every size stays the same ratio.
 const sizeStyles: Record<
   TileSize,
   { root: string; label: string; sizes: string }
 > = {
-  xs: { root: "h-10 w-8", label: "text-[8px]", sizes: "32px" },
-  sm: { root: "h-14 w-11", label: "text-[9px]", sizes: "44px" },
-  md: { root: "h-20 w-14", label: "text-[10px]", sizes: "56px" },
-  lg: { root: "h-24 w-16", label: "text-[11px]", sizes: "64px" },
+  xs: { root: "w-8 aspect-[3/4]", label: "text-[8px]", sizes: "32px" },
+  sm: { root: "w-11 aspect-[3/4]", label: "text-[9px]", sizes: "44px" },
+  md: { root: "w-14 aspect-[3/4]", label: "text-[10px]", sizes: "56px" },
+  lg: { root: "w-16 aspect-[3/4]", label: "text-[11px]", sizes: "64px" },
   // [BARU] Ukuran taktil untuk tangan di meja digital.
-  xl: { root: "h-28 w-[4.5rem]", label: "text-xs", sizes: "72px" },
+  xl: { root: "w-[4.5rem] aspect-[3/4]", label: "text-xs", sizes: "72px" },
 }
 
 export interface MahjongTileProps
@@ -50,15 +51,14 @@ export const MahjongTile = React.forwardRef<HTMLDivElement, MahjongTileProps>(
         )}
         {...props}
       >
-        {/* Foto ubin: responsif & tidak terpotong. Spasi pada nama berkas
-            di-encode agar URL valid. */}
+        {/* 3:4 centered cover — faces stay centered, no left/right drift. */}
         <Image
-          src={`/tiles/${encodeURIComponent(tile.imagePath)}`}
+          src={tileImageSrc(tile.imagePath)}
           alt={tile.label}
           fill
           sizes={styles.sizes}
           draggable={false}
-          className="h-full w-full object-contain p-0.5 pointer-events-none"
+          className="pointer-events-none object-cover object-center"
         />
         {showLabel ? (
           <span

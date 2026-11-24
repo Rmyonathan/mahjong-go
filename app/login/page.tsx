@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
@@ -94,13 +93,13 @@ function AuthForm() {
   return (
     <main className="relative mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-4 py-10 sm:py-14">
       <div className="mb-8 flex flex-col items-center text-center">
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src="/jade.png"
-          alt=""
+          alt="Jade Mahjong"
           width={72}
           height={72}
-          className="size-[4.5rem] rounded-2xl object-contain shadow-[0_10px_30px_-12px_rgba(22,121,76,0.45)]"
-          priority
+          className="size-[4.5rem] rounded-2xl object-cover shadow-[0_10px_30px_-12px_rgba(22,121,76,0.45)] ring-1 ring-[#102A20]/10"
         />
         <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
           Jade Mahjong Club

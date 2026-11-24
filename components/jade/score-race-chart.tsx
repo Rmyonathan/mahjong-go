@@ -35,19 +35,19 @@ export function ScoreRaceChart({
 
   return (
     <div className="jade-card overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 border-b-[2px] border-jade-ink px-4 py-3">
-        <h2 className="font-serif text-2xl">Score race</h2>
-        <div className="ml-auto flex flex-wrap gap-3">
+      <div className="flex flex-col gap-2 border-b border-[#102A20]/10 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:px-4">
+        <h2 className="font-serif text-xl sm:text-2xl">Score race</h2>
+        <div className="flex gap-3 overflow-x-auto pb-0.5 sm:ml-auto sm:flex-wrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {playerIds.map((id, index) => {
             const player = getPlayer(id)
             const end = series[index][series[index].length - 1] ?? 0
             return (
               <div
                 key={id}
-                className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em]"
+                className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em]"
               >
                 <span
-                  className="size-2.5 border border-jade-ink"
+                  className="size-2.5 rounded-sm"
                   style={{ background: COLORS[index % COLORS.length] }}
                 />
                 <span>{player.nickname}</span>
@@ -64,10 +64,10 @@ export function ScoreRaceChart({
           })}
         </div>
       </div>
-      <div className="overflow-x-auto p-3 sm:p-4">
+      <div className="overflow-x-auto p-2 sm:p-4">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="h-auto w-full min-w-[28rem]"
+          className="h-auto w-full min-w-[20rem] sm:min-w-[28rem]"
           role="img"
           aria-label="Running point totals after each hand"
         >

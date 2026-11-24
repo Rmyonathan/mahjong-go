@@ -91,7 +91,7 @@ async function main() {
     })
   }
 
-  const adminHash = await bcrypt.hash("getsuga39", 10)
+  const adminHash = await bcrypt.hash("jade123", 10)
   const proExpiry = new Date()
   proExpiry.setDate(proExpiry.getDate() + 365)
 
@@ -154,6 +154,7 @@ async function main() {
   })
 
   // EDIT HERE — demo weekly meets for Schedule & Booking
+  // Club tables (admin host) → unlimited scans + optional captain
   const friday = await prisma.meet.create({
     data: {
       title: "Friday Night Jade League",
@@ -169,6 +170,8 @@ async function main() {
       feeIdr: 50_000,
       status: "OPEN",
       hostId: admin.id,
+      captainId: admin.id,
+      scanLimit: null,
     },
   })
 
@@ -187,6 +190,8 @@ async function main() {
       feeIdr: 75_000,
       status: "FULL",
       hostId: admin.id,
+      captainId: admin.id,
+      scanLimit: null,
     },
   })
 
@@ -246,11 +251,11 @@ async function main() {
   await prisma.meet.create({
     data: {
       title: "Sunday Competitive MCR Ranking",
-      dateLabel: "Sun, 22 Nov",
+      dateLabel: "Sun, 29 Nov",
       startTime: "18:30",
       endTime: "22:00",
-      startsAt: new Date("2026-11-22T18:30:00+07:00"),
-      endsAt: new Date("2026-11-22T22:00:00+07:00"),
+      startsAt: new Date("2026-11-29T18:30:00+07:00"),
+      endsAt: new Date("2026-11-29T22:00:00+07:00"),
       location: "Jade Mahjong Lounge, Bandar Lampung",
       boardType: "MCR",
       maxSeats: 8,
@@ -258,9 +263,12 @@ async function main() {
       feeIdr: 60_000,
       status: "OPEN",
       hostId: admin.id,
+      captainId: admin.id,
+      scanLimit: null,
     },
   })
 
+  // Club beginner table — unlimited scans
   await prisma.meet.create({
     data: {
       title: "Tuesday Chill Tiles & Coffee",
@@ -276,6 +284,50 @@ async function main() {
       feeIdr: 40_000,
       status: "OPEN",
       hostId: admin.id,
+      captainId: admin.id,
+      scanLimit: null,
+    },
+  })
+
+  // Player table (Free host) — 3 scans only
+  await prisma.meet.create({
+    data: {
+      title: "Andi's House Casual",
+      dateLabel: "Wed, 25 Nov",
+      startTime: "20:00",
+      endTime: "23:00",
+      startsAt: new Date("2026-11-25T20:00:00+07:00"),
+      endsAt: new Date("2026-11-25T23:00:00+07:00"),
+      location: "Kedaton · Living room table",
+      boardType: "BEGINNER",
+      maxSeats: 4,
+      tables: 1,
+      feeIdr: 0,
+      status: "OPEN",
+      hostId: freeMember.id,
+      captainId: freeMember.id,
+      scanLimit: 3,
+    },
+  })
+
+  // Player table (Pro host) — unlimited scans
+  await prisma.meet.create({
+    data: {
+      title: "Sari's Pro Study Table",
+      dateLabel: "Thu, 26 Nov",
+      startTime: "19:30",
+      endTime: "22:30",
+      startsAt: new Date("2026-11-26T19:30:00+07:00"),
+      endsAt: new Date("2026-11-26T22:30:00+07:00"),
+      location: "Teluk Betung · Cafe nook",
+      boardType: "ADVANCED",
+      maxSeats: 4,
+      tables: 1,
+      feeIdr: 25_000,
+      status: "OPEN",
+      hostId: member.id,
+      captainId: member.id,
+      scanLimit: null,
     },
   })
 

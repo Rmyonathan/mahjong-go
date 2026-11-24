@@ -30,7 +30,14 @@ enum MeetStatus {
   COMPLETED
 }
 
+enum MeetVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 enum BookingStatus {
+  /// Waiting for table host / club owner to accept
+  PENDING
   CONFIRMED
   WAITLIST
   CANCELLED
@@ -87,6 +94,7 @@ model User {
 
   bookings            Booking[]
   hostedMeets         Meet[]          @relation("MeetHost")
+  captainedMeets      Meet[]          @relation("MeetCaptain")
   captainedSessions   GameSession[]   @relation("SessionCaptain")
   sessionSeats        SessionSeat[]
   puzzleVotes         PuzzleVote[]
@@ -242,8 +250,16 @@ model Meet {
   proEarlyBirdUntil DateTime?
   proOnly           Boolean       @default(false)
   status            MeetStatus    @default(OPEN)
+  visibility        MeetVisibility @default(PUBLIC)
+  /// Short code for private tables (e.g. JADE-AB12). Null on public meets.
+  inviteCode        String?       @unique
   hostId            String?
   host              User?         @relation("MeetHost", fields: [hostId], references: [id])
+  /// Who may run camera scans at this table (club tables: host picks captain)
+  captainId         String?
+  captain           User?         @relation("MeetCaptain", fields: [captainId], references: [id])
+  /// null = unlimited scans (club / Pro host). Free player tables default to 3.
+  scanLimit         Int?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -251,6 +267,7 @@ model Meet {
   sessions GameSession[]
 
   @@index([startsAt, status])
+  @@index([inviteCode])
 }
 
 model Booking {

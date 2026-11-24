@@ -64,15 +64,17 @@ export default async function SessionPage({ params }: SessionPageProps) {
         }
       : recent!
     return (
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         <Link
           href="/leaderboard"
           className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground"
         >
           ← Leaderboard
         </Link>
-        <h1 className="mt-4 font-serif text-5xl">{card.title}</h1>
-        <p className="mt-3 max-w-xl text-sm">
+        <h1 className="mt-3 font-serif text-3xl sm:mt-4 sm:text-5xl">
+          {card.title}
+        </h1>
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
           Session #{card.id} at {card.venueName} is on the board, but the full
           hand ledger is not filed yet. Open a session with a complete score race
           from the leaderboard.
@@ -151,52 +153,60 @@ function SessionDetailView({
   const winTotal = session.winMethods.selfDraw + session.winMethods.discard
 
   return (
-    <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto w-full max-w-7xl flex-1 overflow-x-hidden px-4 py-6 sm:px-6 sm:py-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+        <div className="min-w-0">
           <Link
             href="/leaderboard"
             className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground"
           >
             ← Leaderboard
           </Link>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Pill>{seasonLabel}</Pill>
-            <Pill>
+            <Pill className="shrink-0 whitespace-nowrap">
               {whenLabel} – {endTime}
             </Pill>
-            <Pill>{session.seats}-seat table</Pill>
-            <Pill className="border-jade-accent text-jade-accent">
+            <Pill className="shrink-0 whitespace-nowrap">
+              {session.seats}-seat
+            </Pill>
+            <Pill className="shrink-0 border-jade-accent text-jade-accent">
               <span className="mr-1.5 inline-block size-1.5 rounded-full bg-jade-accent" />
               Finished
             </Pill>
           </div>
-          <h1 className="mt-4 font-serif text-4xl leading-none sm:text-5xl">
+          <h1 className="mt-3 font-serif text-3xl leading-[1.05] sm:mt-4 sm:text-5xl">
             {session.title}
           </h1>
           <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-            #{session.id} · {session.venueName}, {session.district}
+            #{session.id} · {session.venueName}
+            {session.district ? `, ${session.district}` : ""}
           </p>
         </div>
         <SessionActions title={session.title} />
       </div>
 
-      <div className="jade-card mt-6 grid grid-cols-2 overflow-hidden sm:grid-cols-5">
-        <SummaryCell label="Games" value={String(session.games)} />
-        <SummaryCell label="Hands won" value={String(session.handsWon)} />
-        <SummaryCell label="Draws" value={String(session.draws)} />
-        <SummaryCell
-          label="Biggest hand"
-          value={formatPlainPoints(session.biggestHand)}
-          emphasize="gold"
-        />
-        <SummaryCell label="Duration" value={durationLabel} className="col-span-2 sm:col-span-1" />
+      {/* Summary strip — scrolls on narrow phones */}
+      <div className="-mx-4 mt-5 overflow-x-auto px-4 sm:mx-0 sm:mt-6 sm:overflow-visible sm:px-0">
+        <div className="jade-card grid min-w-[22rem] grid-cols-5 overflow-hidden sm:min-w-0 sm:grid-cols-5">
+          <SummaryCell label="Games" value={String(session.games)} />
+          <SummaryCell label="Hands" value={String(session.handsWon)} />
+          <SummaryCell label="Draws" value={String(session.draws)} />
+          <SummaryCell
+            label="Biggest"
+            value={formatPlainPoints(session.biggestHand)}
+            emphasize="gold"
+          />
+          <SummaryCell label="Time" value={durationLabel} />
+        </div>
       </div>
 
-      <section className="mt-8" aria-label="Final standings">
-        <h2 className="font-serif text-3xl uppercase">Final standings</h2>
-        <div className="jade-divider mt-3" />
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mt-7 sm:mt-8" aria-label="Final standings">
+        <h2 className="font-serif text-2xl uppercase sm:text-3xl">
+          Final standings
+        </h2>
+        <div className="jade-divider mt-2 sm:mt-3" />
+        <div className="mt-3 grid gap-2.5 sm:mt-4 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
           {session.standings.map((standing) => {
             const player = playerOf(standing.playerId)
             const first = standing.rank === 1
@@ -204,59 +214,66 @@ function SessionDetailView({
               <article
                 key={standing.playerId}
                 className={cn(
-                  "relative overflow-hidden p-4",
+                  "relative overflow-hidden p-3.5 sm:p-4",
                   first ? "jade-card-gold" : "jade-card",
                 )}
               >
-                <span
-                  className={cn(
-                    "absolute left-0 top-0 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
-                    first
-                      ? "bg-jade-gold text-jade-ink"
-                      : "bg-jade-ink text-parchment",
-                  )}
-                >
-                  {standing.rank === 1
-                    ? "1st"
-                    : standing.rank === 2
-                      ? "2nd"
-                      : standing.rank === 3
-                        ? "3rd"
-                        : "4th"}
-                </span>
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="grid size-11 place-items-center border-[2px] border-jade-ink bg-parchment font-mono text-xs shadow-[3px_3px_0_0_var(--jade-ink)]">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-full font-mono text-[10px] uppercase tracking-[0.08em]",
+                      first
+                        ? "bg-jade-gold text-jade-ink"
+                        : "bg-jade-ink text-parchment",
+                    )}
+                  >
+                    {standing.rank === 1
+                      ? "1st"
+                      : standing.rank === 2
+                        ? "2nd"
+                        : standing.rank === 3
+                          ? "3rd"
+                          : "4th"}
+                  </span>
+                  <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#102A20]/15 bg-[#F6F4EE] font-mono text-xs">
                     {player.initials}
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate font-serif text-xl leading-none">{player.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-lg leading-none sm:text-xl">
+                      {player.name}
+                    </p>
                     <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                       {player.nickname}
                     </p>
                   </div>
+                  <p
+                    className={cn(
+                      "shrink-0 font-mono text-lg sm:text-xl",
+                      standing.net > 0 && "text-jade-accent",
+                      standing.net < 0 && "text-jade-red",
+                    )}
+                  >
+                    {formatSignedPoints(standing.net)}
+                  </p>
                 </div>
-                <p
-                  className={cn(
-                    "mt-4 font-mono text-3xl",
-                    standing.net > 0 && "text-jade-accent",
-                    standing.net < 0 && "text-jade-red",
-                  )}
-                >
-                  {formatSignedPoints(standing.net)}
-                </p>
-                <FormSquares form={standing.form} className="mt-3" />
-                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-jade-ink/25 pt-3 font-mono text-[10px] uppercase tracking-[0.12em]">
-                  <div>
-                    <p className="text-muted-foreground">Wins</p>
-                    <p className="mt-0.5 text-sm">{standing.wins}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Self-draw</p>
-                    <p className="mt-0.5 text-sm">{standing.selfDraw}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Dealt in</p>
-                    <p className="mt-0.5 text-sm">{standing.dealtIn}</p>
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-jade-ink/15 pt-3">
+                  <FormSquares form={standing.form} />
+                  <div className="flex gap-3 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                    <span>
+                      W <strong className="text-jade-ink">{standing.wins}</strong>
+                    </span>
+                    <span>
+                      SD{" "}
+                      <strong className="text-jade-ink">
+                        {standing.selfDraw}
+                      </strong>
+                    </span>
+                    <span>
+                      DI{" "}
+                      <strong className="text-jade-ink">
+                        {standing.dealtIn}
+                      </strong>
+                    </span>
                   </div>
                 </div>
               </article>
@@ -265,17 +282,17 @@ function SessionDetailView({
         </div>
       </section>
 
-      <div className="mt-8">
+      <div className="mt-7 sm:mt-8">
         <ScoreRaceChart playerIds={[...session.playerIds]} race={session.race} />
       </div>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+      <div className="mt-7 grid items-start gap-5 sm:mt-8 sm:gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
         <GameLog session={session} />
 
-        <aside className="flex flex-col gap-4" aria-label="Highlights">
-          <div className="jade-card p-4">
-            <h2 className="font-serif text-2xl">Session</h2>
-            <ul className="mt-3 space-y-3 border-t border-jade-ink/25 pt-3">
+        <aside className="flex flex-col gap-3 sm:gap-4" aria-label="Highlights">
+          <div className="jade-card p-3.5 sm:p-4">
+            <h2 className="font-serif text-xl sm:text-2xl">Session</h2>
+            <ul className="mt-3 space-y-3 border-t border-jade-ink/15 pt-3">
               <HighlightRow
                 label="Biggest hand"
                 value={`${playerOf(session.highlights.biggestHand.playerId).nickname} · ${formatPlainPoints(session.highlights.biggestHand.points)}`}
@@ -300,9 +317,9 @@ function SessionDetailView({
             </ul>
           </div>
 
-          <div className="jade-card p-4">
-            <h2 className="font-serif text-2xl">Win methods</h2>
-            <div className="mt-4 space-y-4">
+          <div className="jade-card p-3.5 sm:p-4">
+            <h2 className="font-serif text-xl sm:text-2xl">Win methods</h2>
+            <div className="mt-3 space-y-3 sm:mt-4 sm:space-y-4">
               <MiniBar
                 label="Self-draw"
                 value={session.winMethods.selfDraw}
@@ -318,15 +335,15 @@ function SessionDetailView({
             </div>
           </div>
 
-          <div className="jade-card p-4">
-            <h2 className="font-serif text-2xl">Most claimed combos</h2>
-            <ul className="mt-3 space-y-2 border-t border-jade-ink/25 pt-3">
+          <div className="jade-card p-3.5 sm:p-4">
+            <h2 className="font-serif text-xl sm:text-2xl">Most claimed combos</h2>
+            <ul className="mt-3 space-y-2 border-t border-jade-ink/15 pt-3">
               {session.claimedCombos.map((combo) => (
                 <li
                   key={combo.label}
                   className="flex items-center justify-between gap-3 font-mono text-xs uppercase tracking-[0.12em]"
                 >
-                  <span>{combo.label}</span>
+                  <span className="truncate">{combo.label}</span>
                   <span className="text-jade-accent">{combo.count}</span>
                 </li>
               ))}
@@ -348,7 +365,7 @@ function Pill({
   return (
     <span
       className={cn(
-        "inline-flex items-center border-[2px] border-jade-ink bg-card px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+        "inline-flex items-center rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em]",
         className,
       )}
     >
@@ -371,16 +388,16 @@ function SummaryCell({
   return (
     <div
       className={cn(
-        "border-b border-jade-ink/20 px-3 py-3 sm:border-b-0 sm:border-r sm:last:border-r-0",
+        "border-r border-jade-ink/10 px-2.5 py-2.5 last:border-r-0 sm:px-3 sm:py-3",
         className,
       )}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+      <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground sm:text-[10px]">
         {label}
       </p>
       <p
         className={cn(
-          "mt-1 font-mono text-lg",
+          "mt-0.5 font-mono text-sm sm:mt-1 sm:text-lg",
           emphasize === "gold" && "text-jade-gold",
         )}
       >
@@ -404,7 +421,7 @@ function HighlightRow({
       <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-0.5 text-sm">{value}</p>
+      <p className="mt-0.5 text-sm leading-snug">{value}</p>
       {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
     </li>
   )
@@ -430,8 +447,8 @@ function MiniBar({
           {value} · {pct}%
         </span>
       </div>
-      <div className="h-2.5 border border-jade-ink bg-parchment">
-        <div className={cn("h-full", className)} style={{ width: `${pct}%` }} />
+      <div className="h-2 overflow-hidden rounded-full bg-[#F6F4EE]">
+        <div className={cn("h-full rounded-full", className)} style={{ width: `${pct}%` }} />
       </div>
     </div>
   )

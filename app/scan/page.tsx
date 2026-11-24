@@ -6,9 +6,13 @@ import { CalculatorWorkspace } from "@/components/mahjong/calculator-workspace"
 export const metadata: Metadata = {
   title: "Scan — Jade Mahjong",
   description:
-    "Pindai tangan Mahjong: susun ubin, lalu hitung Fan Hong Kong Old Style.",
+    "Foto tangan Mahjong (Gemini detect) lalu hitung Fan lewat mesin HKOS deterministik.",
 }
 
+/**
+ * `/scan` calculator — photo capture lives in CalculatorWorkspace (Scan foto).
+ * AI only returns tile IDs; scoring always uses `lib/mahjong/engine.ts`.
+ */
 export default function ScanPage() {
   return (
     <Suspense

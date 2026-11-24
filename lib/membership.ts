@@ -5,6 +5,27 @@ import { prisma } from "@/lib/db"
 /** Free users only see this many finished sessions in the archive. */
 export const FREE_SESSION_ARCHIVE_LIMIT = 3
 
+/** Free-hosted player tables get this many camera scans. Club / Pro = unlimited. */
+export const FREE_HOST_SCAN_LIMIT = 3
+
+/**
+ * Scan quota for a meet based on who created it.
+ * Club owner (ADMIN) → unlimited. Pro host → unlimited. Free host → 3.
+ */
+export function scanLimitForHost(host: {
+  role?: string | null
+  membershipTier?: string | null
+  proExpiresAt?: Date | string | null
+}): number | null {
+  if (host.role === "ADMIN") return null
+  if (isProMembership(host)) return null
+  return FREE_HOST_SCAN_LIMIT
+}
+
+export function isClubHost(host: { role?: string | null } | null | undefined) {
+  return host?.role === "ADMIN"
+}
+
 /** Default Pro early-bird window when hosts create a meet (hours from now). */
 export const DEFAULT_PRO_EARLY_BIRD_HOURS = 2
 

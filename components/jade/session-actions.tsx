@@ -28,15 +28,15 @@ export function SessionActions({ title }: { title: string }) {
       <button
         type="button"
         onClick={copyLink}
-        className="inline-flex h-9 items-center gap-2 border-[2px] border-jade-ink bg-card px-3 font-mono text-[10px] uppercase tracking-[0.14em]"
+        className="tap-press inline-flex h-9 items-center gap-2 rounded-full border border-[#102A20]/15 bg-white px-3.5 font-mono text-[10px] uppercase tracking-[0.14em]"
       >
         <Link2 className="size-3.5" />
-        Copy link
+        Copy
       </button>
       <button
         type="button"
         onClick={share}
-        className="inline-flex h-9 items-center gap-2 border-[2px] border-jade-ink bg-jade-ink px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-parchment"
+        className="tap-press inline-flex h-9 items-center gap-2 rounded-full bg-jade-accent px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white"
       >
         <Share2 className="size-3.5" />
         Share

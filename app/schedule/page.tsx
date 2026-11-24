@@ -1,32 +1,31 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { KeyRound, Search } from "lucide-react"
 
 import { BookSeatModal } from "@/components/schedule/book-seat-modal"
 import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
+import { InviteCodeModal } from "@/components/schedule/invite-code-modal"
 import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import {
   boardLabel,
+  buildScheduleDateStrip,
+  extractInviteCode,
   formatCountdown,
   formatFeeIdr,
-  meetMatchesDateFilter,
+  meetMatchesYmd,
+  readSavedInviteCodes,
+  uniqueInviteCodes,
+  writeSavedInviteCodes,
   type ApiMeet,
   type ApiPaymentMethod,
-  type DateFilter,
   type ScheduleViewer,
 } from "@/lib/schedule/types"
 import { cn } from "@/lib/utils"
 
 type BoardFilter = "all" | ApiMeet["boardType"]
-
-const DATE_FILTERS: { id: DateFilter; label: string }[] = [
-  { id: "all", label: "All dates" },
-  { id: "today", label: "Today" },
-  { id: "tomorrow", label: "Tomorrow" },
-  { id: "week", label: "This week" },
-  { id: "later", label: "Later" },
-]
 
 const BOARD_FILTERS: { id: BoardFilter; label: string }[] = [
   { id: "all", label: "All levels" },
@@ -36,15 +35,39 @@ const BOARD_FILTERS: { id: BoardFilter; label: string }[] = [
   { id: "GUIDED", label: "Guided table" },
 ]
 
+const DATE_STRIP = buildScheduleDateStrip(14)
+
 export default function SchedulePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
+          <p className="text-sm text-muted-foreground">Loading schedule…</p>
+        </main>
+      }
+    >
+      <SchedulePageInner />
+    </Suspense>
+  )
+}
+
+function SchedulePageInner() {
+  const searchParams = useSearchParams()
+  const urlCode = searchParams.get("code")?.trim().toUpperCase() || null
+
   const [meets, setMeets] = useState<ApiMeet[]>([])
   const [viewer, setViewer] = useState<ScheduleViewer | null>(null)
   const [membershipTier, setMembershipTier] = useState<"FREE" | "PRO">("FREE")
   const [accountName, setAccountName] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all")
+  const [selectedYmd, setSelectedYmd] = useState<string | null>(null)
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all")
+  const [query, setQuery] = useState("")
+  const [inviteDraft, setInviteDraft] = useState("")
+  const [inviteCodes, setInviteCodes] = useState<string[]>([])
+  const [invitesReady, setInvitesReady] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [bookingMeetId, setBookingMeetId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -52,11 +75,17 @@ export default function SchedulePage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [liveByMeetId, setLiveByMeetId] = useState<Record<string, string>>({})
 
+  const latestInvite = inviteCodes[inviteCodes.length - 1] ?? null
+
   const refresh = useCallback(async () => {
     setError(null)
     try {
+      const params = new URLSearchParams()
+      if (inviteCodes.length) params.set("codes", inviteCodes.join(","))
+      if (query.trim()) params.set("q", query.trim())
+      const qs = params.toString()
       const [scheduleRes, meRes, liveRes] = await Promise.all([
-        fetch("/api/schedule"),
+        fetch(`/api/schedule${qs ? `?${qs}` : ""}`),
         fetch("/api/auth/me"),
         fetch("/api/sessions"),
       ])
@@ -106,11 +135,44 @@ export default function SchedulePage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [inviteCodes, query])
 
   useEffect(() => {
+    const fromUrl =
+      extractInviteCode(urlCode ?? "") ??
+      (urlCode ? urlCode.trim().toUpperCase() : null)
+    const merged = uniqueInviteCodes([
+      ...readSavedInviteCodes(),
+      ...(fromUrl ? [fromUrl] : []),
+    ])
+    setInviteCodes(merged)
+    writeSavedInviteCodes(merged)
+    if (fromUrl) setInviteDraft(fromUrl)
+    else if (merged.length) setInviteDraft(merged[merged.length - 1]!)
+    setInvitesReady(true)
+    if (fromUrl && typeof window !== "undefined") {
+      window.history.replaceState(null, "", "/schedule")
+    }
+  }, [urlCode])
+
+  useEffect(() => {
+    if (!invitesReady) return
     void refresh()
-  }, [refresh])
+  }, [refresh, invitesReady])
+
+  function unlockInvite(code: string) {
+    const next = uniqueInviteCodes([...inviteCodes, code])
+    setInviteCodes(next)
+    writeSavedInviteCodes(next)
+    setInviteDraft(code)
+    setActionError(null)
+  }
+
+  function clearInvites() {
+    setInviteCodes([])
+    setInviteDraft("")
+    writeSavedInviteCodes([])
+  }
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
@@ -119,12 +181,12 @@ export default function SchedulePage() {
 
   const filtered = useMemo(() => {
     return meets.filter((meet) => {
-      const dateOk = meetMatchesDateFilter(meet.startsAt, dateFilter)
+      const dateOk = meetMatchesYmd(meet.startsAt, selectedYmd)
       const boardOk =
         boardFilter === "all" ? true : meet.boardType === boardFilter
       return dateOk && boardOk
     })
-  }, [meets, dateFilter, boardFilter])
+  }, [meets, selectedYmd, boardFilter])
 
   const bookingMeet = meets.find((meet) => meet.id === bookingMeetId) ?? null
   const isAdmin = viewer?.role === "ADMIN"
@@ -134,7 +196,10 @@ export default function SchedulePage() {
     const response = await fetch(`/api/schedule/${meetId}/book`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod: method }),
+      body: JSON.stringify({
+        paymentMethod: method,
+        inviteCodes,
+      }),
     })
     const data = (await response.json()) as {
       error?: string
@@ -147,19 +212,23 @@ export default function SchedulePage() {
     if (!response.ok) throw new Error(data.error ?? "Booking failed")
     await refresh()
     if (data.booking?.status === "WAITLIST") {
-      throw new Error("Table full — you were added to the waitlist")
+      return { kind: "waitlist" as const }
+    }
+    if (data.booking?.status === "PENDING") {
+      return { kind: "pending" as const }
     }
     if (
-      data.booking?.status !== "CONFIRMED" ||
-      !data.booking.seatNumber ||
-      !data.booking.checkInCode
+      data.booking?.status === "CONFIRMED" &&
+      data.booking.seatNumber &&
+      data.booking.checkInCode
     ) {
-      throw new Error("Unexpected booking response")
+      return {
+        kind: "confirmed" as const,
+        seatNumber: data.booking.seatNumber,
+        checkInCode: data.booking.checkInCode,
+      }
     }
-    return {
-      seatNumber: data.booking.seatNumber,
-      checkInCode: data.booking.checkInCode,
-    }
+    throw new Error("Unexpected booking response")
   }
 
   async function cancelOrLeave(meetId: string) {
@@ -170,6 +239,25 @@ export default function SchedulePage() {
     const data = (await response.json()) as { error?: string }
     if (!response.ok) {
       setActionError(data.error ?? "Could not cancel")
+      return
+    }
+    await refresh()
+  }
+
+  async function reviewBooking(
+    meetId: string,
+    bookingId: string,
+    action: "approve" | "reject" | "release",
+  ) {
+    setActionError(null)
+    const response = await fetch(`/api/schedule/${meetId}/book/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingId, action }),
+    })
+    const data = (await response.json()) as { error?: string }
+    if (!response.ok) {
+      setActionError(data.error ?? "Could not update booking")
       return
     }
     await refresh()
@@ -218,8 +306,9 @@ export default function SchedulePage() {
             Schedule & booking
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-relaxed">
-            Lock your seat for upcoming Jade Mahjong sessions. No more WhatsApp
-            lists.
+            Request a seat — the table host must accept before you&apos;re
+            confirmed. Club tables get unlimited scans; Free-hosted tables get
+            3.
           </p>
         </div>
 
@@ -236,47 +325,112 @@ export default function SchedulePage() {
               Login to book
             </Link>
           )}
-          {isAdmin ? (
+          {viewer ? (
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-jade-accent px-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
+              className="inline-flex h-10 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)]"
             >
-              + Create meet
+              {isAdmin ? "+ Club meet" : "+ My table"}
             </button>
           ) : null}
         </div>
       </div>
 
-      <div className="relative mt-6 space-y-3">
-        <div>
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-            When
-          </p>
-          <div
-            className="flex flex-wrap border-[2px] border-jade-ink"
-            role="tablist"
-            aria-label="Date filter"
-          >
-            {DATE_FILTERS.map((entry, index) => (
+      <div className="relative mt-6 space-y-4">
+        {/* Reclub-style date strip */}
+        <div className="-mx-4 overflow-x-auto px-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max items-center gap-2 pb-1" role="tablist" aria-label="Dates">
+            <button
+              type="button"
+              onClick={() => setSelectedYmd(null)}
+              className={cn(
+                "tap-press shrink-0 rounded-2xl px-3 py-2.5 text-center font-mono text-[10px] uppercase tracking-[0.12em]",
+                selectedYmd == null
+                  ? "bg-jade-accent text-white shadow-sm"
+                  : "border border-[#102A20]/10 bg-white text-jade-ink/70",
+              )}
+            >
+              All
+            </button>
+            {DATE_STRIP.map((day) => (
               <button
-                key={entry.id}
+                key={day.ymd}
                 type="button"
                 role="tab"
-                aria-selected={dateFilter === entry.id}
-                onClick={() => setDateFilter(entry.id)}
+                aria-selected={selectedYmd === day.ymd}
+                onClick={() => setSelectedYmd(day.ymd)}
                 className={cn(
-                  "px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                  index > 0 && "border-l-[2px] border-jade-ink",
-                  dateFilter === entry.id
-                    ? "bg-jade-accent text-white"
-                    : "bg-card hover:bg-muted",
+                  "tap-press shrink-0 rounded-2xl px-3.5 py-2.5 text-center font-mono text-[10px] uppercase tracking-[0.12em]",
+                  selectedYmd === day.ymd
+                    ? "bg-jade-accent text-white shadow-sm"
+                    : "border border-[#102A20]/10 bg-white text-jade-ink/70",
                 )}
               >
-                {entry.label}
+                {day.label}
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <form
+            className="relative min-w-0 flex-1"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void refresh()
+            }}
+          >
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search table name…"
+              className="h-11 w-full rounded-full border border-[#102A20]/10 bg-white pl-10 pr-20 text-sm outline-none ring-jade-accent/30 focus:ring-2"
+            />
+            <button
+              type="submit"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-jade-ink px-3.5 py-1.5 text-xs font-semibold text-white"
+            >
+              Search
+            </button>
+          </form>
+
+          {latestInvite ? (
+            <div className="inline-flex h-11 max-w-[46%] shrink-0 items-center overflow-hidden rounded-full border border-jade-accent/40 bg-jade-accent/10">
+              <button
+                type="button"
+                onClick={() => setInviteOpen(true)}
+                className="tap-press inline-flex min-w-0 items-center gap-1.5 px-3 py-2"
+                title="Add another invite code"
+              >
+                <KeyRound className="size-3.5 shrink-0 text-jade-accent" />
+                <span className="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-jade-accent">
+                  {inviteCodes.length > 1
+                    ? `${inviteCodes.length} codes`
+                    : latestInvite}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label="Clear invite codes"
+                onClick={clearInvites}
+                className="tap-press shrink-0 border-l border-jade-accent/25 px-2.5 py-2 text-sm leading-none text-jade-accent/80"
+              >
+                ×
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              className="tap-press inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-[#102A20]/12 bg-white px-3 text-xs font-medium text-jade-ink/80"
+              aria-label="Enter invite code"
+            >
+              <KeyRound className="size-3.5 text-jade-accent" />
+              <span className="hidden sm:inline">Invite</span>
+            </button>
+          )}
         </div>
 
         <div>
@@ -346,6 +500,9 @@ export default function SchedulePage() {
               onCancel={() => cancelOrLeave(meet.id)}
               onWaitlist={() => joinWaitlist(meet.id)}
               onLocked={() => setProOpen(true)}
+              onReview={(bookingId, action) =>
+                reviewBooking(meet.id, bookingId, action)
+              }
             />
           ))}
         </ul>
@@ -357,7 +514,7 @@ export default function SchedulePage() {
         accountName={accountName}
         onClose={() => setBookingMeetId(null)}
         onConfirm={async (method) => {
-          if (!bookingMeet) return null
+          if (!bookingMeet) throw new Error("No meet selected")
           return bookMeet(bookingMeet.id, method)
         }}
       />
@@ -366,12 +523,21 @@ export default function SchedulePage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={() => void refresh()}
+        isClubOwner={isAdmin}
+        isProHost={isPro}
       />
 
       <ProPerkModal
         open={proOpen}
         onClose={() => setProOpen(false)}
         accountName={accountName}
+      />
+
+      <InviteCodeModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        initialCode={inviteDraft}
+        onUnlock={unlockInvite}
       />
     </main>
   )
@@ -387,6 +553,7 @@ function MeetCard({
   onCancel,
   onWaitlist,
   onLocked,
+  onReview,
 }: {
   meet: ApiMeet
   now: number
@@ -397,6 +564,7 @@ function MeetCard({
   onCancel: () => void
   onWaitlist: () => void
   onLocked: () => void
+  onReview: (bookingId: string, action: "approve" | "reject" | "release") => void
 }) {
   const remaining = meet.proEarlyBirdUntil
     ? Math.max(0, new Date(meet.proEarlyBirdUntil).getTime() - now)
@@ -405,6 +573,7 @@ function MeetCard({
   const locked =
     (meet.proOnly || earlyBirdActive) && !isPro
   const youConfirmed = meet.yourBooking?.status === "CONFIRMED"
+  const youPending = meet.yourBooking?.status === "PENDING"
   const youWaiting = meet.yourBooking?.status === "WAITLIST"
   const preview = meet.roster.slice(0, 4)
   const more = Math.max(0, meet.roster.length - preview.length)
@@ -415,25 +584,57 @@ function MeetCard({
 
   return (
     <li className="jade-card flex flex-col overflow-hidden">
+      {meet.isClubTable ? (
+        <div className="border-b border-jade-gold/30 bg-jade-gold/15 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
+          Club table · {meet.scanLabel}
+          {meet.captainName ? ` · Captain ${meet.captainName}` : ""}
+          {meet.visibility === "PRIVATE" ? " · Private" : ""}
+        </div>
+      ) : (
+        <div className="border-b border-[#102A20]/10 bg-jade-soft/70 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+          Player table · {meet.hostName ?? "Host"} · {meet.scanLabel}
+          {meet.visibility === "PRIVATE" ? " · Private" : " · Public"}
+        </div>
+      )}
+      {meet.isHost && meet.visibility === "PRIVATE" && meet.inviteCode ? (
+        <div className="border-b border-[#102A20]/10 bg-white px-4 py-2 text-xs">
+          Invite code{" "}
+          <span className="font-mono font-semibold text-jade-accent">
+            {meet.inviteCode}
+          </span>
+          {" · "}
+          <button
+            type="button"
+            className="font-semibold text-jade-ink underline-offset-2 hover:underline"
+            onClick={() => {
+              if (meet.inviteCode) {
+                void navigator.clipboard.writeText(meet.inviteCode)
+              }
+            }}
+          >
+            Copy code
+          </button>
+        </div>
+      ) : null}
       {meet.proOnly ? (
-        <div className="border-b-[2px] border-jade-ink bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
+        <div className="border-b border-jade-ink/10 bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
           ★ Pro only
         </div>
       ) : earlyBirdActive ? (
-        <div className="border-b-[2px] border-jade-ink bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
+        <div className="border-b border-jade-ink/10 bg-jade-gold px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
           ★ Pro early-bird access ({formatCountdown(remaining)} left)
         </div>
       ) : null}
 
       <div className="flex flex-1 flex-col p-4 sm:p-5">
         <div className="flex flex-wrap gap-2">
-          <span className="border border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+          <span className="rounded-full border border-[#102A20]/12 bg-[#F6F4EE] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             {meet.whenLabel}
           </span>
-          <span className="border border-jade-ink bg-muted px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+          <span className="rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             {boardLabel(meet.boardType)}
           </span>
-          <span className="border border-jade-accent bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+          <span className="rounded-full border border-jade-accent/30 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
             {formatFeeIdr(meet.feeIdr)}
           </span>
         </div>
@@ -495,75 +696,131 @@ function MeetCard({
           </ul>
         </div>
 
+        {meet.isHost && meet.pendingRequests.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-jade-gold/40 bg-jade-gold/10 p-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
+              Seat requests · {meet.pendingRequests.length}
+            </p>
+            <ul className="mt-2 space-y-2">
+              {meet.pendingRequests.map((req) => (
+                <li
+                  key={req.bookingId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-2"
+                >
+                  <span className="text-sm font-medium">{req.nickname}</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onReview(req.bookingId, "approve")}
+                      className="rounded-full bg-jade-accent px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onReview(req.bookingId, "reject")}
+                      className="rounded-full border border-[#102A20]/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div className="mt-auto flex flex-col gap-2 pt-5">
           {!loggedIn ? (
             <Link
               href="/login"
-              className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[#102A20]/15 bg-white px-4 text-sm font-semibold"
             >
               Login to book →
             </Link>
           ) : youConfirmed ? (
+            <div className="space-y-2">
+              <div className="inline-flex h-11 w-full items-center justify-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white">
+                ✓ Seat #{meet.yourBooking?.seatNumber} confirmed
+              </div>
+              {meet.isHost ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    meet.yourBooking &&
+                    onReview(meet.yourBooking.id, "release")
+                  }
+                  className="inline-flex h-9 w-full items-center justify-center rounded-full border border-[#102A20]/15 text-xs font-medium"
+                >
+                  Release my seat (host)
+                </button>
+              ) : (
+                <p className="text-center text-[11px] text-muted-foreground">
+                  Need to leave? Ask the host to release your seat.
+                </p>
+              )}
+            </div>
+          ) : youPending ? (
             <button
               type="button"
               onClick={onCancel}
-              className="inline-flex h-11 items-center justify-center border-[2px] border-jade-accent bg-jade-accent px-4 font-mono text-[11px] uppercase tracking-[0.16em] text-white"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-jade-gold bg-jade-gold/15 px-4 text-sm font-semibold text-jade-ink"
             >
-              ✓ Seat #{meet.yourBooking?.seatNumber} confirmed (cancel)
+              ⏳ Pending host approval · withdraw
             </button>
           ) : locked ? (
             <button
               type="button"
               onClick={onLocked}
-              className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-muted px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[#102A20]/15 bg-[#F6F4EE] px-4 text-sm font-semibold"
             >
-              {meet.proOnly
-                ? "🔒 Pro only"
-                : "🔒 Pro early-bird only"}
+              {meet.proOnly ? "🔒 Pro only" : "🔒 Pro early-bird only"}
             </button>
           ) : meet.isFull ? (
             youWaiting ? (
               <button
                 type="button"
                 onClick={onCancel}
-                className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-[#102A20]/15 bg-white px-4 text-sm font-semibold"
               >
-                ✓ On waitlist ({meet.waitlistCount} waiting) · leave
+                ✓ On waitlist ({meet.waitlistCount}) · leave
               </button>
             ) : (
               <button
                 type="button"
                 onClick={onWaitlist}
-                className="inline-flex h-11 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-[#102A20]/15 bg-white px-4 text-sm font-semibold"
               >
-                Join waitlist ({meet.waitlistCount} waiting)
+                Join waitlist ({meet.waitlistCount})
               </button>
             )
           ) : (
             <button
               type="button"
               onClick={onBook}
-              className="scan-cta-accent inline-flex h-11 items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+              className="inline-flex h-11 items-center justify-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white"
             >
-              Book seat →
+              Request seat →
             </button>
           )}
 
-          <Link
-            href={
-              liveSessionId
-                ? `/session/live?id=${encodeURIComponent(liveSessionId)}`
-                : `/session/new?mode=live&title=${encodeURIComponent(meet.title)}&meet=${meet.id}`
-            }
-            className={cn(
-              "inline-flex h-10 items-center justify-center border-[2px] border-jade-ink px-3 font-mono text-[10px] uppercase tracking-[0.14em]",
-              liveSessionId
-                ? "bg-jade-accent text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
-                : "bg-parchment hover:bg-muted",
-            )}
-          >
-            {liveSessionId ? "● Open live table →" : "Launch live table →"}
-          </Link>
+          {meet.canLaunchLive ? (
+            <Link
+              href={
+                liveSessionId
+                  ? `/session/live?id=${encodeURIComponent(liveSessionId)}`
+                  : `/session/new?mode=live&title=${encodeURIComponent(meet.title)}&meet=${meet.id}`
+              }
+              className={cn(
+                "inline-flex h-10 items-center justify-center rounded-full border border-[#102A20]/15 px-3 text-xs font-semibold uppercase tracking-[0.08em]",
+                liveSessionId
+                  ? "bg-jade-ink text-white"
+                  : "bg-white hover:bg-jade-soft",
+              )}
+            >
+              {liveSessionId ? "● Open live table →" : "Launch live table →"}
+            </Link>
+          ) : null}
         </div>
       </div>
     </li>

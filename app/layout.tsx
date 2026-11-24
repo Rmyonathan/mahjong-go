@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import Script from "next/script"
 import { Fraunces, IBM_Plex_Mono, Source_Sans_3 } from "next/font/google"
 import "./globals.css"
 
+import { ThemeInitScript } from "@/components/theme-init-script"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SiteChrome } from "@/components/site-chrome"
 import { SiteHeader } from "@/components/site-header"
@@ -53,20 +53,6 @@ export const metadata: Metadata = {
   ],
 }
 
-const themeScript = `
-(function() {
-  try {
-    var key = 'mahjong-go-theme';
-    var stored = localStorage.getItem(key);
-    var theme = stored === 'dark' ? 'dark' : 'light';
-    var root = document.documentElement;
-    if (theme === 'dark') root.classList.add('dark');
-    else root.classList.remove('dark');
-    root.style.colorScheme = theme;
-  } catch (e) {}
-})();
-`
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -84,17 +70,17 @@ export default function RootLayout({
           className="paper-grain pointer-events-none fixed inset-0 z-0 opacity-40"
           aria-hidden
         />
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeScript}
-        </Script>
+        <ThemeInitScript />
         <ThemeProvider>
           <div className="relative z-10 flex min-h-full flex-1 flex-col">
             <SiteChrome>
               <SiteHeader />
             </SiteChrome>
-            <div className="flex flex-1 flex-col pb-24 md:pb-12">{children}</div>
+            <div className="flex flex-1 flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-12">
+              {children}
+            </div>
             <SiteChrome>
-              <footer className="site-footer mt-auto border-t border-[#102A20]/10">
+              <footer className="site-footer mt-auto hidden border-t border-[#102A20]/10 md:block">
                 <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
                   <span className="font-serif text-sm text-jade-ink">
                     Jade Mahjong · Vol. 01

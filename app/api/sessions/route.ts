@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getSessionUser, requireUser } from "@/lib/auth"
+import { userCanLaunchMeetLive } from "@/lib/schedule/meet-service"
 import {
   createGameSession,
   findLiveSessionByMeetId,
@@ -60,6 +61,15 @@ export async function POST(request: Request) {
   try {
     // Reopen existing LIVE table for this meet instead of spawning a duplicate
     if (meetId) {
+      const access = await userCanLaunchMeetLive({
+        userId: user.id,
+        role: user.role,
+        meetId,
+      })
+      if (!access.ok) {
+        return NextResponse.json({ error: access.reason }, { status: 403 })
+      }
+
       const existing = await findLiveSessionByMeetId(meetId)
       if (existing) {
         return NextResponse.json({
