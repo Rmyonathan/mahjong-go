@@ -1,4 +1,4 @@
-export type ComboPointBucket = "1" | "2" | "4" | "6" | "8+"
+export type ComboPointBucket = "1" | "3" | "4" | "6" | "10"
 
 export interface HouseComboPattern {
   id: string
@@ -6,283 +6,362 @@ export interface HouseComboPattern {
   points: number
   bucket: ComboPointBucket
   description: string
+  /** Visual example — Kongs use 4 tiles; full hands use 14. */
   exampleTileIds: string[]
-  tag?: "MCR" | "House"
+  tag?: "House"
 }
 
 export const COMBO_POINT_FILTERS: { id: ComboPointBucket | "all"; label: string }[] =
   [
-    { id: "all", label: "All" },
-    { id: "1", label: "1 pt" },
-    { id: "2", label: "2 pts" },
-    { id: "4", label: "4 pts" },
-    { id: "6", label: "6 pts" },
-    { id: "8+", label: "8+ pts" },
+    { id: "all", label: "Semua" },
+    { id: "1", label: "1 Faan" },
+    { id: "3", label: "3 Faan" },
+    { id: "4", label: "4 Faan" },
+    { id: "6", label: "6 Faan" },
+    { id: "10", label: "10 Faan" },
   ]
 
 function bucketFor(points: number): ComboPointBucket {
   if (points <= 1) return "1"
-  if (points === 2) return "2"
-  if (points <= 4) return "4"
+  if (points === 3) return "3"
+  if (points === 4) return "4"
   if (points <= 6) return "6"
-  return "8+"
+  return "10"
 }
 
 function pattern(
-  partial: Omit<HouseComboPattern, "bucket" | "points"> & { points: number },
+  partial: Omit<HouseComboPattern, "bucket" | "points" | "tag"> & {
+    points: number
+  },
 ): HouseComboPattern {
   return {
     ...partial,
+    tag: "House",
     bucket: bucketFor(partial.points),
   }
 }
 
-/** Editorial house / MCR-flavoured patterns for the Combos page. */
+const pung = (id: string) => [id, id, id] as const
+const pair = (id: string) => [id, id] as const
+/** Chi 1-2-3 from lowest tile id */
+function chiFromStart(startId: string) {
+  const m = /^(\w+)-(\d+)$/.exec(startId)
+  if (!m) return [startId, startId, startId]
+  const suit = m[1]
+  const v = Number(m[2])
+  return [`${suit}-${v}`, `${suit}-${v + 1}`, `${suit}-${v + 2}`]
+}
+
+/** Katalog pola Jade Mahjong HK — sinkron §5 spesifikasi resmi. */
 export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
   pattern({
-    id: "pure-double-chow",
-    name: "Pure Double Chow",
+    id: "pung-dragon",
+    name: "Pong / Kong Naga",
     points: 1,
-    tag: "MCR",
-    description: "Dua chow identik dalam satu suit.",
-    exampleTileIds: [
-      "characters-2",
-      "characters-3",
-      "characters-4",
-      "characters-2",
-      "characters-3",
-      "characters-4",
-    ],
+    description:
+      "Pong atau Kong Naga Merah, Hijau, atau Putih. +1 Faan per jenis. Contoh: Pong (3 tile).",
+    exampleTileIds: [...pung("dragon-red")],
   }),
   pattern({
-    id: "mixed-double-chow",
-    name: "Mixed Double Chow",
+    id: "pung-seat-wind",
+    name: "Pong / Kong Angin Kursi",
     points: 1,
-    tag: "MCR",
-    description: "Dua chow nilai sama di suit berbeda.",
+    description: "Pong/Kong Angin yang cocok dengan kursi pemain.",
+    exampleTileIds: [...pung("wind-east")],
+  }),
+  pattern({
+    id: "pung-round-wind",
+    name: "Pong / Kong Angin Meja",
+    points: 1,
+    description: "Pong/Kong Angin yang cocok dengan Angin Meja putaran.",
+    exampleTileIds: [...pung("wind-south")],
+  }),
+  pattern({
+    id: "kong-bonus",
+    name: "Kong",
+    points: 1,
+    description:
+      "+1 Faan tambahan per Kong (empat sejenis), di atas bonus Pong/Kong lain.",
     exampleTileIds: [
-      "characters-5",
-      "characters-6",
-      "characters-7",
       "dots-5",
-      "dots-6",
-      "dots-7",
+      "dots-5",
+      "dots-5",
+      "dots-5",
     ],
   }),
   pattern({
-    id: "short-straight",
-    name: "Short Straight",
+    id: "double-chow",
+    name: "Double Chi (Pasangan Chow sama)",
     points: 1,
-    tag: "MCR",
-    description: "Dua chow berurutan membentuk 1–6 atau 4–9.",
+    description:
+      "Dua set Chi identik — contoh: dua kali 1-2-3 Bulatan. +1 Faan.",
     exampleTileIds: [
-      "bamboo-1",
-      "bamboo-2",
-      "bamboo-3",
-      "bamboo-4",
-      "bamboo-5",
-      "bamboo-6",
+      ...chiFromStart("dots-1"),
+      ...chiFromStart("dots-1"),
     ],
   }),
   pattern({
-    id: "pung-of-terminals",
-    name: "Pung of Terminals",
+    id: "own-bonus",
+    name: "Bunga Sendiri",
     points: 1,
-    tag: "House",
-    description: "Pung 1 atau 9 di suit apa pun.",
-    exampleTileIds: ["dots-1", "dots-1", "dots-1"],
+    description:
+      "Bunga/Musim angkanya sama dengan Angin Kursi. +1 Faan per tile cocok.",
+    exampleTileIds: ["flower-plum", "season-spring"],
   }),
   pattern({
-    id: "dragon-pung",
-    name: "Dragon Pung",
-    points: 2,
-    tag: "House",
-    description: "Pung naga merah, hijau, atau putih.",
-    exampleTileIds: ["dragon-red", "dragon-red", "dragon-red"],
-  }),
-  pattern({
-    id: "seat-wind",
-    name: "Seat Wind",
-    points: 2,
-    tag: "House",
-    description: "Pung angin kursi pemain.",
-    exampleTileIds: ["wind-west", "wind-west", "wind-west"],
+    id: "round-bonus",
+    name: "Bunga Meja",
+    points: 1,
+    description:
+      "Bunga/Musim angkanya sama dengan Angin Meja. +1 Faan per tile cocok.",
+    exampleTileIds: ["flower-orchid", "season-summer"],
   }),
   pattern({
     id: "all-chows",
-    name: "All Chows",
-    points: 2,
-    tag: "MCR",
-    description: "Empat set chow plus pasangan. Tanpa pung.",
+    name: "All Chi (Ping Hu)",
+    points: 1,
+    description: "4 set Chi + 1 pair bebas — tangan penuh 14 tile.",
     exampleTileIds: [
-      "characters-1",
-      "characters-2",
-      "characters-3",
-      "bamboo-4",
-      "bamboo-5",
-      "bamboo-6",
-      "dots-7",
-      "dots-8",
-      "dots-9",
-    ],
-  }),
-  pattern({
-    id: "tile-hog",
-    name: "Tile Hog",
-    points: 2,
-    tag: "MCR",
-    description: "Memegang empat salinan ubin yang sama tanpa kong.",
-    exampleTileIds: ["bamboo-5", "bamboo-5", "bamboo-5", "bamboo-5"],
-  }),
-  pattern({
-    id: "outside-hand",
-    name: "Outside Hand",
-    points: 4,
-    tag: "MCR",
-    description: "Setiap set menyentuh terminal atau honor.",
-    exampleTileIds: [
-      "characters-1",
-      "characters-2",
-      "characters-3",
-      "dots-9",
-      "dots-9",
-      "dots-9",
-      "wind-east",
-      "wind-east",
-      "wind-east",
-    ],
-  }),
-  pattern({
-    id: "fully-concealed",
-    name: "Fully Concealed",
-    points: 4,
-    tag: "House",
-    description: "Menang self-draw tanpa set terbuka.",
-    exampleTileIds: ["dragon-green", "dragon-green", "dragon-green"],
-  }),
-  pattern({
-    id: "mixed-shifted",
-    name: "Mixed Shifted Chows",
-    points: 4,
-    tag: "MCR",
-    description: "Tiga chow bergeser satu nilai di tiga suit.",
-    exampleTileIds: [
-      "characters-2",
-      "characters-3",
-      "characters-4",
-      "bamboo-3",
-      "bamboo-4",
-      "bamboo-5",
-      "dots-4",
-      "dots-5",
-      "dots-6",
-    ],
-  }),
-  pattern({
-    id: "half-flush",
-    name: "Half Flush",
-    points: 6,
-    tag: "MCR",
-    description: "Satu suit plus honor. Klasik meja Jade.",
-    exampleTileIds: [
-      "characters-2",
-      "characters-3",
-      "characters-4",
-      "characters-5",
-      "characters-5",
-      "characters-5",
-      "dragon-white",
-      "dragon-white",
-      "dragon-white",
+      ...chiFromStart("dots-1"),
+      ...chiFromStart("dots-1"),
+      ...chiFromStart("bamboo-4"),
+      ...chiFromStart("characters-5"),
+      ...pair("dots-2"),
     ],
   }),
   pattern({
     id: "all-pungs",
-    name: "All Pungs",
-    points: 6,
-    tag: "MCR",
-    description: "Empat pung atau kong plus pasangan.",
+    name: "All Pong (Toi Toi Hu)",
+    points: 3,
+    description: "4 set Pong/Kong + 1 pair bebas — 14 tile.",
     exampleTileIds: [
-      "bamboo-3",
-      "bamboo-3",
-      "bamboo-3",
-      "dots-8",
-      "dots-8",
-      "dots-8",
-      "wind-north",
-      "wind-north",
-      "wind-north",
+      ...pung("bamboo-3"),
+      ...pung("dots-8"),
+      ...pung("wind-north"),
+      ...pung("characters-5"),
+      ...pair("dragon-green"),
     ],
   }),
   pattern({
-    id: "seven-pairs",
-    name: "Seven Pairs",
-    points: 8,
-    tag: "House",
-    description: "Tujuh pasangan. Tidak ada pung atau chow.",
+    id: "half-flush",
+    name: "Half Flush (Hun Yi Se)",
+    points: 3,
+    description: "1 suit angka + Honor (Angin/Naga) — 14 tile.",
     exampleTileIds: [
-      "characters-1",
-      "characters-1",
-      "bamboo-4",
-      "bamboo-4",
-      "dots-9",
-      "dots-9",
-      "dragon-red",
-      "dragon-red",
+      "characters-2",
+      "characters-3",
+      "characters-4",
+      ...pung("characters-5"),
+      "characters-7",
+      "characters-8",
+      "characters-9",
+      ...pung("dragon-white"),
+      ...pair("wind-east"),
     ],
   }),
   pattern({
     id: "full-flush",
-    name: "Full Flush",
-    points: 8,
-    tag: "MCR",
-    description: "Satu suit saja. Tanpa honor.",
+    name: "Flush (Qing Yi Se)",
+    points: 6,
+    description: "Seluruh 14 tile dari 1 suit angka, tanpa Honor.",
     exampleTileIds: [
       "bamboo-1",
       "bamboo-2",
       "bamboo-3",
-      "bamboo-5",
-      "bamboo-5",
-      "bamboo-5",
+      ...pung("bamboo-5"),
       "bamboo-7",
       "bamboo-8",
       "bamboo-9",
+      ...pung("bamboo-4"),
+      ...pair("bamboo-6"),
     ],
   }),
   pattern({
-    id: "greater-honors",
-    name: "Three Great Scholars",
-    points: 8,
-    tag: "House",
-    description: "Pung ketiga naga. Stempel berat di buku skor.",
+    id: "seven-pairs",
+    name: "Seven Pair (Qi Dui)",
+    points: 4,
+    description: "7 pair bebas (14 tile). Last draw boleh buka.",
     exampleTileIds: [
-      "dragon-red",
-      "dragon-red",
-      "dragon-red",
-      "dragon-green",
-      "dragon-green",
-      "dragon-green",
-      "dragon-white",
-      "dragon-white",
-      "dragon-white",
+      ...pair("characters-1"),
+      ...pair("bamboo-4"),
+      ...pair("dots-9"),
+      ...pair("dragon-red"),
+      ...pair("wind-east"),
+      ...pair("characters-5"),
+      ...pair("bamboo-8"),
     ],
   }),
   pattern({
-    id: "jade-house-hand",
-    name: "Jade House Hand",
-    points: 8,
-    tag: "House",
-    description: "Pola rumah: flush hijau dengan pung Fa Cai.",
+    id: "little-three-dragons",
+    name: "Little Dragon (Xiao San Yuan)",
+    points: 4,
+    description:
+      "2 Pong/Kong Naga + 1 pair Naga + 1 set bebas + 1 set bebas. Boleh dibuka.",
     exampleTileIds: [
-      "bamboo-2",
-      "bamboo-3",
-      "bamboo-4",
-      "bamboo-6",
-      "bamboo-6",
-      "bamboo-6",
+      ...pung("dragon-red"),
+      ...pung("dragon-green"),
+      ...pair("dragon-white"),
+      "dots-2",
+      "dots-3",
+      "dots-4",
+      ...pung("bamboo-8"),
+    ],
+  }),
+  pattern({
+    id: "big-three-dragons",
+    name: "Three Great Scholars (Da San Yuan)",
+    points: 10,
+    description: "3 Pong/Kong seluruh Naga + 1 set + 1 pair bebas — 14 tile.",
+    exampleTileIds: [
+      ...pung("dragon-red"),
+      ...pung("dragon-green"),
+      ...pung("dragon-white"),
+      "characters-4",
+      "characters-5",
+      "characters-6",
+      ...pair("dots-3"),
+    ],
+  }),
+  pattern({
+    id: "jade-dragon",
+    name: "Jade Dragon",
+    points: 10,
+    description:
+      "Pung/Kong Fa Cai (發) + sisanya serba Bambu Pong/Kong + pair (tanpa Chi).",
+    exampleTileIds: [
+      ...pung("dragon-green"),
+      ...pung("bamboo-2"),
+      ...pung("bamboo-5"),
+      ...pung("bamboo-8"),
+      ...pair("bamboo-9"),
+    ],
+  }),
+  pattern({
+    id: "ruby-dragon",
+    name: "Ruby Dragon",
+    points: 10,
+    description:
+      "Pung/Kong Chong (中) + sisanya serba Karakter Pong/Kong + pair (tanpa Chi).",
+    exampleTileIds: [
+      ...pung("dragon-red"),
+      ...pung("characters-2"),
+      ...pung("characters-5"),
+      ...pung("characters-8"),
+      ...pair("characters-9"),
+    ],
+  }),
+  pattern({
+    id: "pearl-dragon",
+    name: "Pearl Dragon",
+    points: 10,
+    description:
+      "Pung/Kong Pak Phan (白) + sisanya serba Bulat Pong/Kong + pair (tanpa Chi).",
+    exampleTileIds: [
+      ...pung("dragon-white"),
+      ...pung("dots-2"),
+      ...pung("dots-5"),
+      ...pung("dots-8"),
+      ...pair("dots-9"),
+    ],
+  }),
+  pattern({
+    id: "all-honors",
+    name: "All Honors",
+    points: 10,
+    description: "4 Pong/Kong Honor + 1 pair Honor — 14 tile.",
+    exampleTileIds: [
+      ...pung("wind-east"),
+      ...pung("wind-south"),
+      ...pung("dragon-red"),
+      ...pung("dragon-green"),
+      ...pair("wind-north"),
+    ],
+  }),
+  pattern({
+    id: "little-four-winds",
+    name: "Little Three Winds",
+    points: 10,
+    description: "3 Pong/Kong Angin + 1 pair Angin + 1 set bebas — 14 tile.",
+    exampleTileIds: [
+      ...pung("wind-east"),
+      ...pung("wind-south"),
+      ...pung("wind-west"),
+      ...pair("wind-north"),
+      "dots-5",
+      "dots-6",
+      "dots-7",
+    ],
+  }),
+  pattern({
+    id: "big-four-winds",
+    name: "Big Four Winds",
+    points: 10,
+    description: "4 Pong/Kong seluruh Angin + 1 pair bebas — 14 tile.",
+    exampleTileIds: [
+      ...pung("wind-east"),
+      ...pung("wind-south"),
+      ...pung("wind-west"),
+      ...pung("wind-north"),
+      ...pair("dragon-red"),
+    ],
+  }),
+  pattern({
+    id: "nine-gates",
+    name: "Nine Gates",
+    points: 10,
+    description:
+      "111-2345678-999 + 1 tile ekstra satu suit (14 tile). Last draw boleh buka.",
+    exampleTileIds: [
+      "characters-1",
+      "characters-1",
+      "characters-1",
+      "characters-2",
+      "characters-3",
+      "characters-4",
+      "characters-5",
+      "characters-6",
+      "characters-7",
+      "characters-8",
+      "characters-9",
+      "characters-9",
+      "characters-9",
+      "characters-5",
+    ],
+  }),
+  pattern({
+    id: "all-terminals",
+    name: "All Terminals",
+    points: 10,
+    description: "Hanya angka 1 dan 9 — 4 Pong/Kong + 1 pair (14 tile).",
+    exampleTileIds: [
+      ...pung("dots-1"),
+      ...pung("dots-9"),
+      ...pung("bamboo-1"),
+      ...pung("characters-9"),
+      ...pair("bamboo-9"),
+    ],
+  }),
+  pattern({
+    id: "thirteen-orphans",
+    name: "Thirteen Orphans",
+    points: 10,
+    description:
+      "Satu tiap terminal & honor + satu pair (14 tile). Last draw boleh buka.",
+    exampleTileIds: [
+      "characters-1",
+      "characters-9",
+      "bamboo-1",
+      "bamboo-9",
+      "dots-1",
+      "dots-9",
+      "wind-east",
+      "wind-south",
+      "wind-west",
+      "wind-north",
+      "dragon-red",
       "dragon-green",
-      "dragon-green",
-      "dragon-green",
+      "dragon-white",
+      "dragon-white",
     ],
   }),
 ]
@@ -292,9 +371,9 @@ export function combosByBucket(bucket: ComboPointBucket | "all") {
   return HOUSE_COMBO_PATTERNS.filter((entry) => entry.bucket === bucket)
 }
 
-export const HONOR_OF_THE_DAY_ID = "wind-west"
+export const HONOR_OF_THE_DAY_ID = "wind-east"
 export const NUMBER_OF_THE_DAY_IDS = [
-  "characters-4",
-  "dots-4",
-  "bamboo-4",
+  "characters-1",
+  "dots-1",
+  "bamboo-1",
 ] as const

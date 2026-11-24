@@ -57,7 +57,14 @@ export async function POST(request: Request) {
   const endTime = body.endTime?.trim()
   const startsAt = body.startsAt ? new Date(body.startsAt) : null
   const endsAt = body.endsAt ? new Date(body.endsAt) : null
-  const boardType = body.boardType as MeetBoardType | undefined
+  const boardType: MeetBoardType =
+    body.boardType === "ADVANCED" ||
+    body.boardType === "MCR" ||
+    body.boardType === "GUIDED"
+      ? body.boardType
+      : "BEGINNER"
+  const scoringRuleset =
+    body.scoringRuleset === "CHICKEN" ? "CHICKEN" : "JADE_HK"
 
   if (
     !title ||
@@ -67,11 +74,10 @@ export async function POST(request: Request) {
     !startsAt ||
     !endsAt ||
     Number.isNaN(startsAt.getTime()) ||
-    Number.isNaN(endsAt.getTime()) ||
-    !boardType
+    Number.isNaN(endsAt.getTime())
   ) {
     return NextResponse.json(
-      { error: "Title, date, times, and board type are required" },
+      { error: "Title, date, and times are required" },
       { status: 400 },
     )
   }
@@ -79,10 +85,6 @@ export async function POST(request: Request) {
   const maxSeats = Math.max(1, Number(body.maxSeats) || 4)
   const tables = Math.max(1, Number(body.tables) || Math.ceil(maxSeats / 4))
   const location = body.location?.trim() || DEFAULT_MEET_LOCATION
-  const feeIdr =
-    typeof body.feeIdr === "number" && body.feeIdr >= 0
-      ? body.feeIdr
-      : DEFAULT_MEET_FEE_IDR
 
   const hostRow = await prisma.user.findUnique({
     where: { id: host.id },
@@ -99,6 +101,11 @@ export async function POST(request: Request) {
 
   const scanLimit = resolveScanLimitForUser(hostRow)
   const isClub = hostRow.role === "ADMIN"
+  const feeIdr = isClub
+    ? typeof body.feeIdr === "number" && body.feeIdr >= 0
+      ? body.feeIdr
+      : DEFAULT_MEET_FEE_IDR
+    : 0
   const visibility: MeetVisibility =
     body.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC"
   const inviteCode = visibility === "PRIVATE" ? makeInviteCode() : null
@@ -112,31 +119,50 @@ export async function POST(request: Request) {
     if (captain) captainId = captain.id
   }
 
-  const meet = await prisma.meet.create({
-    data: {
-      title,
-      dateLabel,
-      startTime,
-      endTime,
-      startsAt,
-      endsAt,
-      location,
-      boardType,
-      maxSeats,
-      tables,
-      feeIdr,
-      proEarlyBirdUntil: body.proEarlyBirdUntil
-        ? new Date(body.proEarlyBirdUntil)
-        : null,
-      proOnly: isClub ? Boolean(body.proOnly) : false,
-      visibility,
-      inviteCode,
-      status: "OPEN",
-      hostId: host.id,
-      captainId,
-      scanLimit,
-    },
-  })
+  const meetBase = {
+    title,
+    dateLabel,
+    startTime,
+    endTime,
+    startsAt,
+    endsAt,
+    location,
+    boardType,
+    maxSeats,
+    tables,
+    feeIdr,
+    proEarlyBirdUntil: body.proEarlyBirdUntil
+      ? new Date(body.proEarlyBirdUntil)
+      : null,
+    proOnly: isClub ? Boolean(body.proOnly) : false,
+    visibility,
+    inviteCode,
+    status: "OPEN" as const,
+    hostId: host.id,
+    captainId,
+    scanLimit,
+  }
+
+  let meet
+  try {
+    meet = await prisma.meet.create({
+      data: { ...meetBase, scoringRuleset },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes("Unknown argument `scoringRuleset`")) {
+      meet = await prisma.meet.create({ data: meetBase })
+    } else {
+      console.error("[POST /api/schedule]", err)
+      return NextResponse.json(
+        {
+          error:
+            "Could not create meet. Stop the dev server, run `npx prisma generate`, then restart.",
+        },
+        { status: 500 },
+      )
+    }
+  }
 
   return NextResponse.json(
     {

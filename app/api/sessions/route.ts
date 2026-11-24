@@ -124,6 +124,7 @@ export async function GET(request: Request) {
       const seats = [...session.seats].sort(
         (a, b) => a.seatOrder - b.seatOrder,
       )
+      const serialized = serializeSession(session)
       return {
         id: session.id,
         title: session.title,
@@ -136,6 +137,9 @@ export async function GET(request: Request) {
         captainName: session.captain.name,
         isCaptain:
           session.captainUserId === user.id || user.role === "ADMIN",
+        durationTier: serialized.durationTier,
+        maxHours: serialized.maxHours,
+        expiresAt: serialized.expiresAt,
         seats: seats.map((seat) => ({
           id: seat.id,
           wind: seat.wind,

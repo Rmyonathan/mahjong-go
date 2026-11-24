@@ -1,12 +1,12 @@
 /** Weekly side quests — XP claims land on the linked Player.experienceXp. */
 
 export type WeeklyBounty = {
-  /** Stable id within the week, e.g. half-flush */
+  /** Stable id within the week, e.g. half-flush — must exist in catalog/verify */
   key: string
   title: string
   blurb: string
   xp: number
-  /** Soft completion hint for UI (manual claim for Week 1). */
+  /** Soft completion hint for UI */
   howTo: string
 }
 
@@ -23,11 +23,20 @@ export function currentWeekKey(date = new Date()) {
   const dayNum = utc.getUTCDay() || 7
   utc.setUTCDate(utc.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1))
-  const week = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
+  const week = Math.ceil(
+    ((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  )
   return `${utc.getUTCFullYear()}-W${String(week).padStart(2, "0")}`
 }
 
-/** EDIT HERE — rotate weekly quests as the club season evolves. */
+export function bountyId(weekKey: string, key: string) {
+  return `${weekKey}:${key}`
+}
+
+/** @deprecated Prefer getWeeklyBounties() — kept for login-gated API fallbacks */
+export { defaultWeeklyBounties as WEEKLY_BOUNTY_DEFAULTS } from "@/lib/bounty/catalog"
+
+/** Static fallback list (same as default catalog trio). */
 export const WEEKLY_BOUNTIES: WeeklyBounty[] = [
   {
     key: "half-flush",
@@ -51,7 +60,3 @@ export const WEEKLY_BOUNTIES: WeeklyBounty[] = [
     howTo: "Survive a full table without feeding — then claim.",
   },
 ]
-
-export function bountyId(weekKey: string, key: string) {
-  return `${weekKey}:${key}`
-}

@@ -51,16 +51,20 @@ function readParam(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? ""
 }
 
-function readBoard(value: string): BoardTier | "all" {
+function readBoard(value: string, live: boolean): BoardTier | "all" {
   if (value === "beginner" || value === "advanced" || value === "mcr") return value
-  return "advanced"
+  if (value === "all") return "all"
+  // Live club board defaults to every table; seed demo still opens on advanced
+  return live ? "all" : "advanced"
 }
 
 export default async function LeaderboardPage({ searchParams }: LeaderboardPageProps) {
   const params = await searchParams
   const query = readParam(params.q)
-  const board = readBoard(readParam(params.board))
   const tvMode = readParam(params.tv) === "1"
+  const finishedCount = await countFinishedSessions()
+  const usingLiveStats = finishedCount > 0
+  const board = readBoard(readParam(params.board), usingLiveStats)
 
   const [
     season,
@@ -68,7 +72,6 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     winMethods,
     standings,
     recentSessions,
-    finishedCount,
     session,
   ] = await Promise.all([
     getActiveSeason(),
@@ -76,10 +79,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     getWinMethodsSeason(),
     getDbBoardStandings(tvMode ? "all" : board),
     getRecentSessions(),
-    countFinishedSessions(),
     getSessionUser(),
   ])
-  const usingLiveStats = finishedCount > 0
 
   const viewerUser =
     session != null
@@ -138,15 +139,29 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     return hay.includes(query.toLowerCase())
   })
 
+  // Live search: also match club Players who sat finished tables but aren't on
+  // the current board filter — pull their standing from the "all" board.
+  let searchExtra: BoardStandingRow[] = []
+  if (query && usingLiveStats && board !== "all" && boardRows.length === 0) {
+    const allRows = await getDbBoardStandings("all")
+    searchExtra = allRows.filter((row) => {
+      const hay = [row.player.name, row.player.nickname, row.player.district]
+        .join(" ")
+        .toLowerCase()
+      return hay.includes(query.toLowerCase())
+    })
+  }
+  const displayRows = boardRows.length > 0 ? boardRows : searchExtra
+
   const playerMap = await getPlayersByIds([
     seasonKpi.biggestHand.playerId,
     seasonKpi.hotStreak.playerId,
     ...recentSessions.map((session) => session.winnerId),
   ])
 
-  const leader = boardRows[0]
-  const second = boardRows[1]
-  const third = boardRows[2]
+  const leader = displayRows[0]
+  const second = displayRows[1]
+  const third = displayRows[2]
   const biggest = playerMap.get(seasonKpi.biggestHand.playerId)
   const hot = playerMap.get(seasonKpi.hotStreak.playerId)
   const winTotal = winMethods.selfDraw + winMethods.discard
@@ -322,7 +337,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
           </button>
         </div>
 
-        {boardRows.length === 0 ? (
+        {displayRows.length === 0 ? (
           <div className="jade-card px-4 py-8">
             <p className="font-serif text-2xl">No matching players.</p>
           </div>
@@ -343,7 +358,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   </tr>
                 </thead>
                 <tbody>
-                  {boardRows.map((row) => (
+                  {displayRows.map((row) => (
                     <tr
                       key={row.playerId}
                       className={cn(
@@ -399,7 +414,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
             </div>
 
             <ol className="flex flex-col gap-2 md:hidden">
-              {boardRows.map((row) => (
+              {displayRows.map((row) => (
                 <li
                   key={row.playerId}
                   className={cn(

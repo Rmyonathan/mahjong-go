@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { KeyRound, X } from "lucide-react"
+import { KeyRound } from "lucide-react"
 
 import { extractInviteCode } from "@/lib/schedule/types"
 
@@ -28,6 +28,17 @@ export function InviteCodeModal({
     return () => window.clearTimeout(id)
   }, [open, initialCode])
 
+  useEffect(() => {
+    if (open) {
+      document.body.dataset.inviteModal = "1"
+    } else {
+      delete document.body.dataset.inviteModal
+    }
+    return () => {
+      delete document.body.dataset.inviteModal
+    }
+  }, [open])
+
   if (!open) return null
 
   function submit() {
@@ -41,7 +52,7 @@ export function InviteCodeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center">
       <button
         type="button"
         aria-label="Close invite code"
@@ -49,22 +60,15 @@ export function InviteCodeModal({
         onClick={onClose}
       />
       <div className="relative z-10 w-full max-w-sm border-[2px] border-jade-ink bg-parchment shadow-[8px_8px_0_0_var(--jade-ink)] sm:mx-4">
-        <div className="flex items-center justify-between border-b-[2px] border-jade-ink px-4 py-3">
+        <div className="border-b-[2px] border-jade-ink px-4 py-3">
           <h2 className="flex items-center gap-2 font-serif text-xl">
             <KeyRound className="size-4 text-jade-accent" />
             Invite code
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid size-9 place-items-center border-[2px] border-jade-ink bg-card"
-          >
-            <X className="size-4" />
-          </button>
         </div>
 
         <form
-          className="space-y-3 p-4"
+          className="space-y-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
           onSubmit={(event) => {
             event.preventDefault()
             submit()

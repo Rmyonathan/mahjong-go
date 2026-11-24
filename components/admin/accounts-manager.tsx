@@ -1,7 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+
+import { ADMIN_BONUS_SCAN_GRANT } from "@/lib/membership"
 
 interface UserRow {
   id: string
@@ -33,6 +35,7 @@ export function AccountsManager({
   const [users, setUsers] = useState(initialUsers)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [query, setQuery] = useState("")
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -40,6 +43,24 @@ export function AccountsManager({
     role: "MEMBER" as "ADMIN" | "MEMBER",
     playerId: "",
   })
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((user) => {
+      const hay = [
+        user.name,
+        user.email,
+        user.player?.nickname ?? "",
+        user.player?.name ?? "",
+        user.role,
+        user.isPro ? "pro" : "free",
+      ]
+        .join(" ")
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [users, query])
 
   async function refresh() {
     const response = await fetch("/api/admin/users")
@@ -101,6 +122,7 @@ export function AccountsManager({
   }
 
   async function toggleRole(user: UserRow) {
+    // EDIT HERE — schema roles are ADMIN | MEMBER only (no COACH enum)
     const role = user.role === "ADMIN" ? "MEMBER" : "ADMIN"
     const response = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
@@ -129,17 +151,76 @@ export function AccountsManager({
     await refresh()
   }
 
+  async function resetPassword(user: UserRow) {
+    const password = window.prompt(
+      `New password for ${user.name} (min 6 chars)`,
+      "",
+    )
+    if (!password) return
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters")
+      return
+    }
+    setError(null)
+    const response = await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    })
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string }
+      setError(data.error ?? "Password reset failed")
+      return
+    }
+    window.alert(`Password updated for ${user.name}`)
+  }
+
+  async function grantBonusScans(user: UserRow) {
+    if (
+      !confirm(
+        `Add +${ADMIN_BONUS_SCAN_GRANT} scans to ${user.name}'s Free-hosted open tables?`,
+      )
+    ) {
+      return
+    }
+    setError(null)
+    const response = await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grantBonusScans: ADMIN_BONUS_SCAN_GRANT }),
+    })
+    const data = (await response.json()) as {
+      error?: string
+      updatedMeets?: number
+    }
+    if (!response.ok) {
+      setError(data.error ?? "Scan grant failed")
+      return
+    }
+    window.alert(
+      data.updatedMeets
+        ? `Added +${ADMIN_BONUS_SCAN_GRANT} scans on ${data.updatedMeets} table(s).`
+        : `No open Free-hosted tables for ${user.name} — create a Free table first.`,
+    )
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section className="jade-card overflow-hidden">
         <div className="border-b-[2px] border-jade-ink px-4 py-3">
-          <h2 className="font-serif text-2xl">Accounts</h2>
+          <h2 className="font-serif text-2xl">Members & Pro</h2>
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            {users.length} users · Set PRO grants 30 days after QRIS WhatsApp
+            {users.length} users · search, Pro, scans, password, roles
           </p>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search name, email, nickname…"
+            className="mt-3 h-10 w-full border-[2px] border-jade-ink bg-parchment px-3 text-sm outline-none"
+          />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] border-collapse text-left">
+          <table className="w-full min-w-[48rem] border-collapse text-left">
             <thead className="bg-jade-ink font-mono text-[10px] uppercase tracking-[0.14em] text-parchment">
               <tr>
                 <th className="px-3 py-2">Name</th>
@@ -151,9 +232,14 @@ export function AccountsManager({
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-jade-ink/25 last:border-b-0">
-                  <td className="px-3 py-3 font-serif text-lg leading-none">{user.name}</td>
+              {filtered.map((user) => (
+                <tr
+                  key={user.id}
+                  className="border-b border-jade-ink/25 last:border-b-0"
+                >
+                  <td className="px-3 py-3 font-serif text-lg leading-none">
+                    {user.name}
+                  </td>
                   <td className="px-3 py-3 font-mono text-xs">{user.email}</td>
                   <td className="px-3 py-3 font-mono text-[10px] uppercase tracking-[0.12em]">
                     {user.role}
@@ -164,7 +250,8 @@ export function AccountsManager({
                     </p>
                     {user.isPro && user.proExpiresAt ? (
                       <p className="mt-1 font-mono text-[9px] text-muted-foreground">
-                        until {new Date(user.proExpiresAt).toLocaleDateString("id-ID")}
+                        until{" "}
+                        {new Date(user.proExpiresAt).toLocaleDateString("id-ID")}
                       </p>
                     ) : null}
                   </td>
@@ -182,14 +269,28 @@ export function AccountsManager({
                             : "border border-jade-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-accent"
                         }
                       >
-                        {user.isPro ? "Clear PRO" : "Set PRO · 30d"}
+                        {user.isPro ? "Clear PRO" : "+30d PRO"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => grantBonusScans(user)}
+                        className="border border-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
+                      >
+                        +{ADMIN_BONUS_SCAN_GRANT} Scans
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => resetPassword(user)}
+                        className="border border-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
+                      >
+                        Reset PW
                       </button>
                       <button
                         type="button"
                         onClick={() => toggleRole(user)}
                         className="border border-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]"
                       >
-                        Role
+                        {user.role === "ADMIN" ? "Demote" : "Make Admin"}
                       </button>
                       <button
                         type="button"
@@ -205,6 +306,11 @@ export function AccountsManager({
             </tbody>
           </table>
         </div>
+        {error ? (
+          <p className="border-t border-jade-ink/20 px-4 py-3 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
+            {error}
+          </p>
+        ) : null}
       </section>
 
       <section className="jade-card-accent p-4">
@@ -225,10 +331,14 @@ export function AccountsManager({
             label="Password"
             type="password"
             value={form.password}
-            onChange={(value) => setForm((prev) => ({ ...prev, password: value }))}
+            onChange={(value) =>
+              setForm((prev) => ({ ...prev, password: value }))
+            }
           />
           <label className="block">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em]">Role</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+              Role
+            </span>
             <select
               value={form.role}
               onChange={(event) =>
@@ -262,11 +372,6 @@ export function AccountsManager({
               ))}
             </select>
           </label>
-          {error ? (
-            <p className="font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
-              {error}
-            </p>
-          ) : null}
           <button
             type="submit"
             disabled={pending}
@@ -293,7 +398,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="font-mono text-[10px] uppercase tracking-[0.14em]">{label}</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+        {label}
+      </span>
       <input
         type={type}
         required

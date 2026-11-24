@@ -1,22 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X } from "lucide-react"
-
+import { RulesetPicker } from "@/components/mahjong/ruleset-picker"
+import {
+  LIVE_SESSION_HOURS_FREE,
+  LIVE_SESSION_HOURS_PRO,
+} from "@/lib/membership"
+import type { RuleVariant } from "@/lib/mahjong/types"
+import { rulesetToDb } from "@/lib/mahjong/rulesets"
 import {
   DEFAULT_MEET_FEE_IDR,
   DEFAULT_MEET_LOCATION,
   formatFeeIdr,
-  type ApiMeetBoardType,
 } from "@/lib/schedule/types"
 import { cn } from "@/lib/utils"
-
-const BOARDS: { id: ApiMeetBoardType; label: string }[] = [
-  { id: "BEGINNER", label: "Beginner" },
-  { id: "ADVANCED", label: "Advanced" },
-  { id: "MCR", label: "MCR" },
-  { id: "GUIDED", label: "Guided" },
-]
 
 function defaultDateOffset(days: number) {
   const date = new Date()
@@ -50,12 +47,12 @@ export function CreateMeetModal({
   isProHost?: boolean
 }) {
   // EDIT HERE — host create defaults
-  const [title, setTitle] = useState("Friday Teluk Beginner")
+  const [title, setTitle] = useState("Friday Teluk")
   const [date, setDate] = useState(defaultDateOffset(1))
   const [startTime, setStartTime] = useState("13:00")
-  const [endTime, setEndTime] = useState("16:00")
   const [location, setLocation] = useState(DEFAULT_MEET_LOCATION)
-  const [boardType, setBoardType] = useState<ApiMeetBoardType>("BEGINNER")
+  const [scoringRuleset, setScoringRuleset] =
+    useState<RuleVariant>("jade-hk")
   const [tables, setTables] = useState(1)
   const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
   const [proOnly, setProOnly] = useState(false)
@@ -67,8 +64,31 @@ export function CreateMeetModal({
   const [error, setError] = useState<string | null>(null)
   const [createdInvite, setCreatedInvite] = useState<string | null>(null)
 
+  // EDIT HERE — mirrors LIVE_SESSION_HOURS_* in lib/membership.ts
+  const hostTier = isClubOwner ? "club" : isProHost ? "pro" : "free"
+  const liveHours =
+    hostTier === "club"
+      ? null
+      : hostTier === "pro"
+        ? LIVE_SESSION_HOURS_PRO
+        : LIVE_SESSION_HOURS_FREE
   const scanLabel =
-    isClubOwner || isProHost ? "Unlimited scans" : "3 scans (Free host)"
+    hostTier === "free" ? "3 scans (Free host)" : "Unlimited scans"
+  const liveLengthLabel =
+    liveHours == null
+      ? "Unlimited — club tables never auto-end"
+      : `${liveHours} hours then auto-ends`
+
+  useEffect(() => {
+    if (open) {
+      document.body.dataset.createMeetModal = "1"
+    } else {
+      delete document.body.dataset.createMeetModal
+    }
+    return () => {
+      delete document.body.dataset.createMeetModal
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -104,19 +124,22 @@ export function CreateMeetModal({
   const maxSeats = tables * 4
 
   async function submit() {
-    if (!title.trim() || !date || !startTime || !endTime) {
-      setError("Fill title, date, and times.")
-      return
-    }
-    if (endTime <= startTime) {
-      setError("End time must be after start time.")
+    if (!title.trim() || !date || !startTime) {
+      setError("Fill title, date, and start time.")
       return
     }
     setPending(true)
     setError(null)
     try {
       const startsAt = new Date(`${date}T${startTime}:00+07:00`)
-      const endsAt = new Date(`${date}T${endTime}:00+07:00`)
+      // End is derived from live-table length (Free 2h / Pro 24h / Club calendar +8h)
+      const endSpanHours = liveHours ?? 8
+      const endsAt = new Date(
+        startsAt.getTime() + endSpanHours * 60 * 60 * 1000,
+      )
+      const [startH, startM] = startTime.split(":").map(Number)
+      const endTotal = (startH * 60 + startM + endSpanHours * 60) % (24 * 60)
+      const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, "0")}:${String(endTotal % 60).padStart(2, "0")}`
       const proEarlyBirdUntil =
         earlyBirdHours > 0
           ? new Date(Date.now() + earlyBirdHours * 60 * 60 * 1000).toISOString()
@@ -133,10 +156,11 @@ export function CreateMeetModal({
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
           location: location.trim() || DEFAULT_MEET_LOCATION,
-          boardType,
+          boardType: "BEGINNER",
+          scoringRuleset: rulesetToDb(scoringRuleset),
           maxSeats,
           tables,
-          feeIdr,
+          feeIdr: isClubOwner ? feeIdr : 0,
           proOnly: isClubOwner ? proOnly : false,
           proEarlyBirdUntil: isClubOwner ? proEarlyBirdUntil : null,
           captainId: isClubOwner && captainId ? captainId : null,
@@ -165,32 +189,35 @@ export function CreateMeetModal({
     }
   }
 
+  const inputClass =
+    "mt-1.5 h-11 w-full rounded-xl border border-[#102A20]/15 bg-white px-3 text-sm outline-none ring-jade-accent/30 focus:border-jade-accent focus:ring-2"
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Close create meet"
-        className="absolute inset-0 bg-jade-ink/55"
+        className="absolute inset-0 bg-jade-ink/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <div className="relative z-10 max-h-[94vh] w-full max-w-lg overflow-y-auto border-[2px] border-jade-ink bg-parchment shadow-[8px_8px_0_0_var(--jade-ink)] sm:mx-4">
-        <div className="sticky top-0 flex items-center justify-between border-b-[2px] border-jade-ink bg-parchment px-4 py-3">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-meet-title"
+        className="relative z-10 flex max-h-[min(92dvh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#102A20]/12 bg-[#F6F4EE] shadow-[0_-8px_40px_-12px_rgba(16,42,32,0.35)] sm:max-h-[90vh] sm:rounded-2xl sm:border-[2px] sm:border-jade-ink sm:shadow-[8px_8px_0_0_var(--jade-ink)]"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-[#102A20]/10 px-4 py-3 sm:border-jade-ink sm:border-b-[2px]">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              {isClubOwner ? "Club owner desk" : "Player table"}
+              {isClubOwner ? "Club table" : "Casual table"}
             </p>
-            <h2 className="font-serif text-2xl">Create meet</h2>
+            <h2 id="create-meet-title" className="font-serif text-2xl">
+              Create meet
+            </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid size-9 place-items-center border-[2px] border-jade-ink bg-card"
-          >
-            <X className="size-4" />
-          </button>
         </div>
 
-        <div className="space-y-4 p-4 sm:p-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
           <label className="block">
             <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
               Title
@@ -198,11 +225,11 @@ export function CreateMeetModal({
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="mt-1 h-11 w-full border-[2px] border-jade-ink bg-card px-3 font-serif text-xl outline-none"
+              className={cn(inputClass, "font-serif text-lg")}
             />
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
                 Date
@@ -211,7 +238,7 @@ export function CreateMeetModal({
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
-                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2 font-mono text-sm"
+                className={cn(inputClass, "font-mono")}
               />
             </label>
             <label className="block">
@@ -222,21 +249,13 @@ export function CreateMeetModal({
                 type="time"
                 value={startTime}
                 onChange={(event) => setStartTime(event.target.value)}
-                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2 font-mono text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                End
-              </span>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2 font-mono text-sm"
+                className={cn(inputClass, "font-mono")}
               />
             </label>
           </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            End time is set automatically from your host tier below.
+          </p>
 
           <label className="block">
             <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -245,33 +264,17 @@ export function CreateMeetModal({
             <input
               value={location}
               onChange={(event) => setLocation(event.target.value)}
-              className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 text-sm outline-none"
+              className={inputClass}
             />
           </label>
 
-          <fieldset>
-            <legend className="font-mono text-[10px] uppercase tracking-[0.14em]">
-              Board
-            </legend>
-            <div className="mt-2 flex flex-wrap border-[2px] border-jade-ink">
-              {BOARDS.map((board, index) => (
-                <button
-                  key={board.id}
-                  type="button"
-                  onClick={() => setBoardType(board.id)}
-                  className={cn(
-                    "flex-1 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.12em]",
-                    index > 0 && "border-l-[2px] border-jade-ink",
-                    boardType === board.id
-                      ? "bg-jade-ink text-white"
-                      : "bg-card hover:bg-muted",
-                  )}
-                >
-                  {board.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <div className="rounded-2xl border border-[#102A20]/10 bg-white p-3">
+            <RulesetPicker
+              compact
+              value={scoringRuleset}
+              onChange={setScoringRuleset}
+            />
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
@@ -286,80 +289,96 @@ export function CreateMeetModal({
                 onChange={(event) =>
                   setTables(Math.max(1, Number(event.target.value) || 1))
                 }
-                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
+                className={cn(inputClass, "font-mono")}
               />
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                {maxSeats} seats
+              <p className="mt-1 text-xs text-muted-foreground">
+                {maxSeats} seats · 4 players per table
               </p>
             </label>
-            <label className="block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                Fee (IDR)
-              </span>
-              <input
-                type="number"
-                min={0}
-                step={5000}
-                value={feeIdr}
-                onChange={(event) =>
-                  setFeeIdr(Math.max(0, Number(event.target.value) || 0))
-                }
-                className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
-              />
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                {formatFeeIdr(feeIdr)}
+            {isClubOwner ? (
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                  Seat fee (QRIS)
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={5000}
+                  value={feeIdr}
+                  onChange={(event) =>
+                    setFeeIdr(Math.max(0, Number(event.target.value) || 0))
+                  }
+                  className={cn(inputClass, "font-mono")}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatFeeIdr(feeIdr)} per seat when guests book
+                </p>
+              </label>
+            ) : (
+              <p className="rounded-2xl border border-[#102A20]/10 bg-white p-3 text-xs leading-relaxed text-muted-foreground">
+                Free player table — no booking QRIS. Only club can charge seats.
               </p>
-            </label>
+            )}
           </div>
 
           <fieldset>
             <legend className="font-mono text-[10px] uppercase tracking-[0.14em]">
-              Visibility
+              Who can find this?
             </legend>
-            <div className="mt-2 flex border-[2px] border-jade-ink">
+            <div className="mt-2 flex gap-2 rounded-xl border border-[#102A20]/10 bg-white p-1">
               <button
                 type="button"
                 onClick={() => setVisibility("PUBLIC")}
                 className={cn(
-                  "flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                  visibility === "PUBLIC" ? "bg-jade-ink text-white" : "bg-card",
+                  "flex-1 rounded-lg px-3 py-2.5 text-xs font-medium transition",
+                  visibility === "PUBLIC"
+                    ? "bg-jade-accent text-white"
+                    : "text-jade-ink hover:bg-jade-soft/50",
                 )}
               >
-                Public
+                Everyone
               </button>
               <button
                 type="button"
                 onClick={() => setVisibility("PRIVATE")}
                 className={cn(
-                  "flex-1 border-l-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  "flex-1 rounded-lg px-3 py-2.5 text-xs font-medium transition",
                   visibility === "PRIVATE"
-                    ? "bg-jade-accent text-white"
-                    : "bg-card",
+                    ? "bg-jade-ink text-white"
+                    : "text-jade-ink hover:bg-jade-soft/50",
                 )}
               >
-                Private · invite
+                Invite only
               </button>
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {visibility === "PRIVATE"
-                ? "Only people with your invite code/link can find and request a seat."
-                : "Anyone on the schedule can see and request a seat."}
+                ? "Share an invite code after you publish."
+                : "Listed on the public schedule."}
             </p>
           </fieldset>
 
-          <div className="rounded-xl border border-[#102A20]/10 bg-jade-soft/60 px-3 py-2.5 text-xs text-jade-ink">
-            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
-              Scan policy
-            </p>
-            <p className="mt-1">
-              {isClubOwner
-                ? "Club table — unlimited scans. Pick a captain who can run the camera."
-                : isProHost
-                  ? "Pro host — unlimited scans on this table."
-                  : "Free host — this table gets 3 camera scans."}{" "}
-              ({scanLabel})
-            </p>
-          </div>
+          <details className="rounded-2xl border border-[#102A20]/10 bg-white p-3 text-sm open:pb-4">
+            <summary className="cursor-pointer list-none font-medium text-jade-ink [&::-webkit-details-marker]:hidden">
+              Host perks &amp; limits
+            </summary>
+            <ul className="mt-3 space-y-2 text-xs leading-relaxed text-muted-foreground">
+              <li>
+                <strong className="font-normal text-jade-ink">Live length:</strong>{" "}
+                {liveLengthLabel}
+              </li>
+              <li>
+                <strong className="font-normal text-jade-ink">Camera scans:</strong>{" "}
+                {scanLabel}
+                {isClubOwner ? " — choose a captain below." : ""}
+              </li>
+              {hostTier === "free" ? (
+                <li>
+                  Pro hosts get {LIVE_SESSION_HOURS_PRO}h tables and unlimited scans.
+                </li>
+              ) : null}
+            </ul>
+          </details>
 
           {createdInvite ? (
             <div className="rounded-xl border border-jade-gold/40 bg-white p-4 text-sm">
@@ -386,14 +405,19 @@ export function CreateMeetModal({
           ) : null}
 
           {isClubOwner ? (
+            <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Club options
+            </h3>
+          ) : null}
+          {isClubOwner ? (
             <>
-              <div className="flex border-[2px] border-jade-ink">
+              <div className="flex gap-2 rounded-xl border border-[#102A20]/10 bg-white p-1">
                 <button
                   type="button"
                   onClick={() => setProOnly(false)}
                   className={cn(
-                    "flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                    !proOnly ? "bg-jade-ink text-white" : "bg-card",
+                    "flex-1 rounded-lg px-3 py-2 text-xs font-medium",
+                    !proOnly ? "bg-jade-ink text-white" : "text-jade-ink",
                   )}
                 >
                   Open to all
@@ -402,8 +426,8 @@ export function CreateMeetModal({
                   type="button"
                   onClick={() => setProOnly(true)}
                   className={cn(
-                    "flex-1 border-l-[2px] border-jade-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]",
-                    proOnly ? "bg-jade-gold text-jade-ink" : "bg-card",
+                    "flex-1 rounded-lg px-3 py-2 text-xs font-medium",
+                    proOnly ? "bg-jade-gold text-jade-ink" : "text-jade-ink",
                   )}
                 >
                   Pro only
@@ -412,7 +436,7 @@ export function CreateMeetModal({
 
               <label className="block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Pro early-bird hours (default 2 · 0 = none)
+                  Pro early bird (hours)
                 </span>
                 <input
                   type="number"
@@ -424,18 +448,18 @@ export function CreateMeetModal({
                       Math.max(0, Number(event.target.value) || 0),
                     )
                   }
-                  className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 font-mono"
+                  className={cn(inputClass, "font-mono")}
                 />
               </label>
 
               <label className="block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                  Table captain (who can scan)
+                  Who runs the camera?
                 </span>
                 <select
                   value={captainId}
                   onChange={(event) => setCaptainId(event.target.value)}
-                  className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-3 text-sm"
+                  className={inputClass}
                 >
                   <option value="">Me (club owner)</option>
                   {members.map((member) => (
@@ -449,23 +473,37 @@ export function CreateMeetModal({
           ) : null}
 
           {error ? (
-            <p className="font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
+            <p className="rounded-xl bg-jade-red/10 px-3 py-2 text-sm text-jade-red">
               {error}
             </p>
           ) : null}
-
-          {!createdInvite ? (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={submit}
-              className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-50"
-            >
-              {pending ? "Publishing…" : "Publish meet"}
-            </button>
-          ) : null}
         </div>
+
+        {!createdInvite ? (
+          <CreateMeetFooter pending={pending} onSubmit={submit} />
+        ) : null}
       </div>
+    </div>
+  )
+}
+
+function CreateMeetFooter({
+  pending,
+  onSubmit,
+}: {
+  pending: boolean
+  onSubmit: () => void
+}) {
+  return (
+    <div className="shrink-0 border-t border-[#102A20]/10 bg-[#F6F4EE]/95 px-4 py-3 backdrop-blur-sm pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:border-jade-ink sm:border-t-[2px]">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={onSubmit}
+        className="tap-press inline-flex h-12 w-full items-center justify-center rounded-full bg-jade-accent text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(22,121,76,0.65)] disabled:opacity-50"
+      >
+        {pending ? "Publishing…" : "Publish meet"}
+      </button>
     </div>
   )
 }

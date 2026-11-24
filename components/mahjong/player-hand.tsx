@@ -28,6 +28,9 @@ export const FLOWER_HAND_DROPPABLE_ID = "flower-hand-dropzone"
  */
 export const MAX_MAIN_TILES = 18
 
+/** Ubin suit/honor untuk Hu standar (4 set + pasang); Kong ekstra → hingga 18. */
+export const STANDARD_WIN_TILES = 14
+
 /** Batas maksimum ubin bonus (4 Bunga + 4 Musim). */
 export const MAX_FLOWER_TILES = 8
 

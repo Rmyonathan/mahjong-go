@@ -138,7 +138,7 @@ export default function LiveTablesPage() {
             {tables.length} live
           </span>
           <Link
-            href="/session/new?mode=live"
+            href="/schedule?create=1"
             className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-jade-accent px-3 font-mono text-[11px] uppercase tracking-[0.16em] text-white shadow-[3px_3px_0_0_var(--jade-ink)]"
           >
             + Open new table
@@ -163,7 +163,7 @@ export default function LiveTablesPage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Link
-              href="/session/new?mode=live"
+              href="/schedule?create=1"
               className="scan-cta-accent inline-flex h-11 items-center px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
             >
               Start a table →

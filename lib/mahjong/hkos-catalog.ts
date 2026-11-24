@@ -1,11 +1,16 @@
 /**
- * Katalog tampilan pola Hong Kong Old Style.
- * Sumber nilai Fan = mesin skor di `engine.ts` (bukan logika skor baru).
+ * Katalog tampilan pola Jade Mahjong HK (§5 spesifikasi resmi).
+ * Nilai Faan mengikuti mesin skor di `engine.ts` — file ini hanya untuk UI.
  */
+
+import {
+  FAAN_LIMIT,
+  FAAN_TO_BASE_POINTS,
+  getJadePayout,
+} from "@/lib/mahjong/payout"
 
 export type HkosPatternGroup =
   | "bonus"
-  | "basic"
   | "structure"
   | "special"
   | "limit"
@@ -18,233 +23,263 @@ export interface HkosCatalogPattern {
   description: string
 }
 
-/** Pola bonus Bunga/Musim — dijumlahkan di atas komponen tangan. */
+/** +1 Faan: Naga, Angin, Bunga/Musim — bisa bertumpuk di atas pola tangan. */
 export const HKOS_BONUS_PATTERNS: HkosCatalogPattern[] = [
   {
-    key: "no-flowers",
-    name: "Tanpa Bunga",
-    fan: 1,
-    group: "bonus",
-    description: "Tangan tidak memiliki ubin Bunga maupun Musim.",
-  },
-  {
-    key: "own-bonus",
-    name: "Bunga / Musim Sendiri",
-    fan: 1,
-    group: "bonus",
-    description: "Setiap ubin bonus yang cocok dengan kursi pemain (+1 Fan).",
-  },
-  {
-    key: "set-of-seasons",
-    name: "Satu Set Musim",
-    fan: 2,
-    group: "bonus",
-    description: "Memiliki keempat ubin Musim.",
-  },
-  {
-    key: "set-of-flowers",
-    name: "Satu Set Bunga",
-    fan: 2,
-    group: "bonus",
-    description: "Memiliki keempat ubin Bunga.",
-  },
-]
-
-/** Pola dasar honor & angin. */
-export const HKOS_BASIC_PATTERNS: HkosCatalogPattern[] = [
-  {
     key: "pung-dragon",
-    name: "Pung / Kong Naga",
+    name: "Pong / Kong Naga",
     fan: 1,
-    group: "basic",
-    description: "+1 Fan per jenis Naga (Merah, Hijau, atau Putih).",
+    group: "bonus",
+    description:
+      "Pong atau Kong dari salah satu Naga: Merah (中 Chong), Hijau (發 Fa Cai), atau Putih (白 Pak Phan). +1 Faan per jenis.",
   },
   {
     key: "pung-seat-wind",
-    name: "Pung Angin Kursi",
+    name: "Pong / Kong Angin Kursi",
     fan: 1,
-    group: "basic",
-    description: "Pung/Kong Angin yang sama dengan kursi pemain.",
+    group: "bonus",
+    description:
+      "Pong/Kong Angin yang sesuai dengan kursi pemain sendiri (Seat Wind). +1 Faan.",
   },
   {
     key: "pung-round-wind",
-    name: "Pung Angin Ronde",
+    name: "Pong / Kong Angin Meja",
     fan: 1,
-    group: "basic",
-    description: "Pung/Kong Angin yang sama dengan Angin ronde.",
+    group: "bonus",
+    description:
+      "Pong/Kong Angin yang sesuai dengan Angin Meja putaran saat ini (Round Wind). +1 Faan.",
+  },
+  {
+    key: "own-bonus",
+    name: "Bunga Sendiri (Dapat Bunga Sendiri)",
+    fan: 1,
+    group: "bonus",
+    description:
+      "Bunga/Musim yang angkanya sama dengan Angin Kursi. Bisa +2 jika punya Bunga dan Musim yang cocok.",
+  },
+  {
+    key: "round-bonus",
+    name: "Bunga Meja (Dapat Bunga Meja)",
+    fan: 1,
+    group: "bonus",
+    description:
+      "Bunga/Musim yang angkanya sama dengan Angin Meja. +1 Faan per tile yang cocok.",
+  },
+  {
+    key: "kong-bonus",
+    name: "Kong",
+    fan: 1,
+    group: "bonus",
+    description:
+      "+1 Faan tambahan untuk setiap Kong (empat ubin sejenis). Bisa bertumpuk dengan Pong/Kong Naga atau Angin.",
+  },
+  {
+    key: "double-chow",
+    name: "Double Chi (Pasangan Chow sama)",
+    fan: 1,
+    group: "bonus",
+    description:
+      "Dua urutan Chi identik dalam satu tangan (contoh: dua kali 1-2-3 Bulatan). +1 Faan per pasang Chow sama.",
   },
 ]
 
-/** Pola struktur tangan standar (4 set + 1 pasang). */
+/** Dasar struktur tangan — 4 set + 1 pasang (atau pola khusus). */
 export const HKOS_STRUCTURE_PATTERNS: HkosCatalogPattern[] = [
   {
     key: "all-chows",
-    name: "All Chows (Ping Hu)",
+    name: "All Chi (Ping Hu)",
     fan: 1,
     group: "structure",
-    description: "Seluruh set berupa urutan (Chow) + satu pasang.",
+    description:
+      "Semua 4 set berupa urutan (Chi) + 1 pair bebas. Tanpa Pong/Kong di set utama.",
   },
   {
     key: "all-pungs",
-    name: "All Pungs (Toitoi)",
+    name: "All Pong (Toi Toi Hu)",
     fan: 3,
     group: "structure",
-    description: "Seluruh set berupa Pung/Kong + satu pasang.",
+    description:
+      "Semua 4 set berupa kembar 3/4 (Pong/Kong) + 1 pair bebas.",
   },
   {
     key: "half-flush",
-    name: "Half Flush (Huen Yi Sher)",
+    name: "Half Flush (Hun Yi Se)",
     fan: 3,
     group: "structure",
-    description: "Satu suit dicampur ubin Angin/Naga.",
+    description:
+      "Semua tile dari 1 suit angka (Man / Bulat / Bambu) dicampur Honor (Angin / Naga).",
   },
   {
     key: "full-flush",
-    name: "Full Flush (Ching Yi Sher)",
+    name: "Flush (Qing Yi Se)",
     fan: 6,
     group: "structure",
-    description: "Tangan 100% satu suit tanpa ubin kehormatan.",
+    description:
+      "Seluruh 14 tile dari 1 suit angka saja — tanpa Honor sama sekali.",
   },
+]
+
+/** Special hands — 4 Faan (catatan boleh dibuka / last draw). */
+export const HKOS_SPECIAL_PATTERNS: HkosCatalogPattern[] = [
   {
     key: "seven-pairs",
-    name: "Seven Pairs",
+    name: "Seven Pair (Qi Dui)",
     fan: 4,
-    group: "structure",
-    description: "Tepat 14 ubin membentuk 7 pasang berbeda.",
+    group: "special",
+    description:
+      "7 pasang tile (pair), gambar bebas. Last draw boleh buka.",
   },
   {
     key: "little-three-dragons",
-    name: "Little Three Dragons",
+    name: "Little Dragon (Xiao San Yuan)",
     fan: 4,
     group: "special",
-    description: "Dua Pung/Kong Naga + pasangan Naga ketiga.",
+    description:
+      "2 Pong/Kong Naga + 1 pair Naga + sisa set Pong/Kong/Chi bebas. Boleh dibuka.",
   },
 ]
 
-/** Limit Hand — ≥10 Fan; komponen kecil diabaikan. */
+/** Limit Hand — 10 Faan (maksimum meja). */
 export const HKOS_LIMIT_PATTERNS: HkosCatalogPattern[] = [
   {
-    key: "thirteen-orphans",
-    name: "Thirteen Orphans",
-    fan: 10,
-    group: "limit",
-    description: "Satu tiap terminal & honor + satu pasangan.",
-  },
-  {
-    key: "nine-gates",
-    name: "Nine Gates",
-    fan: 10,
-    group: "limit",
-    description: "Pola 111-2345678-999 + ekstra satu suit. Menunggu semua 1–9.",
-  },
-  {
-    key: "flush-seven-pairs",
-    name: "Flush in Seven Unique Pairs",
-    fan: 10,
-    group: "limit",
-    description: "Tujuh pasang unik serba satu suit tanpa honor.",
-  },
-  {
     key: "big-three-dragons",
-    name: "Three Great Scholars (Big Three Dragons)",
+    name: "Three Great Scholars (Da San Yuan)",
     fan: 10,
     group: "limit",
-    description: "Tiga Pung/Kong seluruh Naga.",
-  },
-  {
-    key: "big-four-winds",
-    name: "Big Four Winds",
-    fan: 10,
-    group: "limit",
-    description: "Empat Pung/Kong seluruh Angin.",
-  },
-  {
-    key: "little-four-winds",
-    name: "Little Four Winds",
-    fan: 10,
-    group: "limit",
-    description: "Tiga Pung/Kong Angin + pasangan Angin keempat.",
+    description:
+      "3 Pong/Kong Naga lengkap (中, 發, 白) + 1 set bebas + 1 pair bebas. Boleh dibuka.",
   },
   {
     key: "jade-dragon",
-    name: "Jade Dragon",
+    name: "Jade Dragon (Lu Yi Se)",
     fan: 10,
     group: "limit",
-    description: "Naga Hijau (pasang/Pung) + sisanya serba Bambu.",
+    description:
+      "Pong/Kong Naga Hijau (發) + sisa set Pong/Kong dan pair hanya suit Bambu (tanpa Chi). Boleh dibuka.",
   },
   {
     key: "ruby-dragon",
-    name: "Ruby Dragon",
+    name: "Ruby Dragon (Red Dragon)",
     fan: 10,
     group: "limit",
-    description: "Naga Merah (pasang/Pung) + sisanya serba Karakter.",
+    description:
+      "Pong/Kong Naga Merah (中) + sisa set Pong/Kong dan pair hanya Karakter/Man (tanpa Chi). Boleh dibuka.",
   },
   {
     key: "pearl-dragon",
-    name: "Pearl Dragon",
+    name: "Pearl Dragon (White Dragon)",
     fan: 10,
     group: "limit",
-    description: "Naga Putih (pasang/Pung) + sisanya serba Bulatan.",
+    description:
+      "Pong/Kong Naga Putih (白) + sisa set Pong/Kong dan pair hanya Bulat/Dots (tanpa Chi). Boleh dibuka.",
   },
   {
     key: "all-honors",
-    name: "All Honors",
+    name: "All Honors (Zi Yi Se)",
     fan: 10,
     group: "limit",
-    description: "Seluruh ubin adalah Angin/Naga (4 Pung + 1 pasang).",
+    description:
+      "4 Pong/Kong Honor bebas (Angin / Naga) + 1 pair Honor bebas. Boleh dibuka.",
+  },
+  {
+    key: "little-four-winds",
+    name: "Little Three Winds (Xiao Si Xi)",
+    fan: 10,
+    group: "limit",
+    description:
+      "3 Pong/Kong Angin + 1 pair Angin + 1 set Pong/Kong/Chi bebas. Boleh dibuka.",
+  },
+  {
+    key: "big-four-winds",
+    name: "Big Four Winds (Da Si Xi)",
+    fan: 10,
+    group: "limit",
+    description:
+      "4 Pong/Kong Angin lengkap (東南西北) + 1 pair bebas. Boleh dibuka.",
+  },
+  {
+    key: "nine-gates",
+    name: "Nine Gates (Jiu Lian Bao Deng)",
+    fan: 10,
+    group: "limit",
+    description:
+      "1 suit: 1-1-1, 2–8, 9-9-9 + 1 tile kembar sebagai pair. Last draw boleh buka.",
   },
   {
     key: "all-terminals",
-    name: "All Terminals",
+    name: "All Terminals (Qing Yao Jiu)",
     fan: 10,
     group: "limit",
-    description: "Seluruh ubin adalah angka 1 & 9 (4 Pung + 1 pasang).",
+    description:
+      "4 Pong/Kong dan 1 pair hanya dari angka 1 dan 9. Boleh dibuka.",
   },
   {
-    key: "all-kongs",
-    name: "All Kongs",
+    key: "thirteen-orphans",
+    name: "Thirteen Orphans (Shi San Yao)",
     fan: 10,
     group: "limit",
-    description: "Empat Kong + satu pasangan.",
+    description:
+      "1 & 9 tiap suit + ke-7 Honor + 1 pair dari salah satu tile tersebut. Last draw boleh buka.",
   },
 ]
 
-export const HKOS_PAYOUT_ROWS = [
-  { fan: 1, ron: 2, tsumo: 1 },
-  { fan: 2, ron: 4, tsumo: 2 },
-  { fan: 3, ron: 8, tsumo: 4 },
-  { fan: 4, ron: 16, tsumo: 8 },
-  { fan: 5, ron: 24, tsumo: 12 },
-  { fan: 6, ron: 32, tsumo: 16 },
-  { fan: 7, ron: 48, tsumo: 24 },
-  { fan: 8, ron: 64, tsumo: 32 },
-  { fan: 9, ron: 96, tsumo: 48 },
-  { fan: 10, ron: 128, tsumo: 64, note: "Limit" },
-] as const
+/** @deprecated Gunakan HKOS_BONUS_PATTERNS — alias lama untuk impor kompatibel. */
+export const HKOS_BASIC_PATTERNS = HKOS_BONUS_PATTERNS
+
+export function formatJadeMiles(value: number): string {
+  return value.toLocaleString("id-ID")
+}
+
+export interface HkosPayoutRow {
+  fan: number
+  basePoints: number
+  winnerDiscard: number
+  winnerSelfDraw: number
+  note?: string
+}
+
+/** Baris tabel Faan → Jade Miles (Social Points per 1.000). */
+export const HKOS_PAYOUT_ROWS: HkosPayoutRow[] = Array.from(
+  { length: FAAN_LIMIT + 1 },
+  (_, fan) => {
+    const payout = getJadePayout(fan)
+    const row: HkosPayoutRow = {
+      fan,
+      basePoints: FAAN_TO_BASE_POINTS[fan] ?? payout.basePoints,
+      winnerDiscard: payout.winnerDiscard,
+      winnerSelfDraw: payout.winnerSelfDraw,
+    }
+    if (fan === 0) row.note = "Chicken Hand"
+    if (fan === FAAN_LIMIT) row.note = "Limit"
+    return row
+  },
+)
 
 export const HKOS_SECTIONS = [
   {
     id: "bonus",
-    title: "Bunga & Musim",
-    blurb: "Dihitung terpisah. Tetap dijumlahkan meski tangan Limit.",
+    title: "Bonus & Dasar",
+    blurb:
+      "+1 Faan per komponen — dijumlahkan di atas pola tangan utama.",
     patterns: HKOS_BONUS_PATTERNS,
-  },
-  {
-    id: "basic",
-    title: "Honor Dasar",
-    blurb: "Pung/Kong Naga dan Angin kursi atau ronde.",
-    patterns: HKOS_BASIC_PATTERNS,
   },
   {
     id: "structure",
     title: "Struktur Tangan",
-    blurb: "Empat set + satu pasang, atau Seven Pairs.",
+    blurb: "Ping Hu, Toi Toi, Half Flush, dan Flush.",
     patterns: HKOS_STRUCTURE_PATTERNS,
   },
   {
+    id: "special",
+    title: "Special Hand (4 Faan)",
+    blurb: 'Syarat "boleh dibuka" / last draw tetap sah.',
+    patterns: HKOS_SPECIAL_PATTERNS,
+  },
+  {
     id: "limit",
-    title: "Limit Hand",
-    blurb: "≥10 Fan. Komponen kecil diabaikan; skor batas 128/lawan (ron).",
+    title: "Limit Hand (10 Faan)",
+    blurb:
+      "Maksimum 10 Faan = 64.000 base (Jade Miles). Komponen kecil diabaikan.",
     patterns: HKOS_LIMIT_PATTERNS,
   },
 ] as const

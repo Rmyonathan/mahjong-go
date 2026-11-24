@@ -17,6 +17,7 @@ import { Trophy, X } from "lucide-react"
 
 import { GameContextControls } from "@/components/mahjong/game-context-controls"
 import { MahjongTile } from "@/components/mahjong/mahjong-tile"
+import { RulesetPicker } from "@/components/mahjong/ruleset-picker"
 import { TileBank } from "@/components/mahjong/tile-bank"
 import {
   FLOWER_HAND_DROPPABLE_ID,
@@ -27,11 +28,10 @@ import {
 } from "@/components/mahjong/player-hand"
 import type { ConfirmedScanHand } from "@/components/session/camera-scan-modal"
 import { calculateHandScore } from "@/lib/mahjong/engine"
-import { getHkosPayout } from "@/lib/mahjong/payout"
+import { formatJadeMiles, getJadePayout } from "@/lib/mahjong/payout"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
-import type { GameContext, HandTile, Tile } from "@/lib/mahjong/types"
+import type { GameContext, HandTile, RuleVariant, Tile } from "@/lib/mahjong/types"
 import {
-  POINT_UNIT,
   computePayoutDeltas,
   type LiveSeat,
   type WinMethod,
@@ -54,11 +54,13 @@ export function HandLogModal({
   seats,
   onClose,
   onConfirm,
+  ruleset: lockedRuleset,
 }: {
   open: boolean
   seats: LiveSeat[]
   onClose: () => void
   onConfirm: (hand: ConfirmedScanHand) => void
+  ruleset?: RuleVariant
 }) {
   const [step, setStep] = React.useState<Step>("tiles")
   const [mainHand, setMainHand] = React.useState<HandTile[]>([])
@@ -68,6 +70,9 @@ export function HandLogModal({
     seatWind: "East",
     roundWind: "East",
   })
+  const [ruleset, setRuleset] = React.useState<RuleVariant>(
+    lockedRuleset ?? "jade-hk",
+  )
   const [scoreFan, setScoreFan] = React.useState(0)
   const [scoreCombos, setScoreCombos] = React.useState<
     { label: string; fan: number }[]
@@ -98,8 +103,9 @@ export function HandLogModal({
     setWinnerSeatIndex(0)
     setMethod("discard")
     setDealtBySeatIndex(seats.length > 1 ? 1 : null)
+    setRuleset(lockedRuleset ?? "jade-hk")
     setGameContext({ seatWind: "East", roundWind: "East" })
-  }, [open, seats.length])
+  }, [open, seats.length, lockedRuleset])
 
   const isMainFull = mainHand.length >= MAX_MAIN_TILES
   const isFlowerFull = flowerHand.length >= MAX_FLOWER_TILES
@@ -152,11 +158,11 @@ export function HandLogModal({
 
   const standardCount = mainHand.filter((t) => t.category !== "bonus").length
 
-  const payout = React.useMemo(() => getHkosPayout(scoreFan), [scoreFan])
+  const payout = React.useMemo(() => getJadePayout(scoreFan), [scoreFan])
   const winnerPoints = React.useMemo(() => {
-    const base =
-      method === "self-draw" ? payout.totalTsumo : payout.perOpponentRon
-    return base * POINT_UNIT
+    return method === "self-draw"
+      ? payout.winnerSelfDraw
+      : payout.winnerDiscard
   }, [method, payout])
 
   const deltas = React.useMemo(
@@ -166,9 +172,9 @@ export function HandLogModal({
         winnerSeatIndex,
         method,
         dealtBySeatIndex: method === "discard" ? dealtBySeatIndex : null,
-        winnerPoints,
+        totalFan: scoreFan,
       }),
-    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, winnerPoints],
+    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, scoreFan],
   )
 
   function handleCalculate() {
@@ -177,10 +183,12 @@ export function HandLogModal({
       setScoreError("Need 14 main tiles to score a winning hand.")
       return
     }
-    const result = calculateHandScore(mainHand, flowerHand, gameContext)
-    if (!result.isValidHand && result.totalFan <= 0) {
+    const result = calculateHandScore(mainHand, flowerHand, gameContext, {
+      variant: ruleset,
+    })
+    if (!result.isValidHand) {
       setScoreError(
-        result.messages[0] ?? "Hand is not a valid win under HKOS rules.",
+        result.messages[0] ?? "Hand is not a valid win under table rules.",
       )
       return
     }
@@ -233,9 +241,6 @@ export function HandLogModal({
             <h2 className="font-serif text-2xl">
               {step === "tiles" ? "Score winning hand" : "Assign to seats"}
             </h2>
-            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              Same HKOS calculator · stays on this table
-            </p>
           </div>
           <button
             type="button"
@@ -248,23 +253,37 @@ export function HandLogModal({
 
         {step === "tiles" ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-jade-ink/30 px-3 py-2">
-              <GameContextControls
+            <div className="flex shrink-0 flex-col gap-2 border-b border-jade-ink/30 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <GameContextControls
+                  compact
+                  context={gameContext}
+                  onChange={setGameContext}
+                  className="border-0 bg-transparent p-0 shadow-none"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={standardCount < 14}
+                  onClick={handleCalculate}
+                  className="scan-cta shrink-0 gap-1.5 rounded-none font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-40"
+                >
+                  <Trophy className="size-3.5" />
+                  Hitung · {standardCount}/14
+                </Button>
+              </div>
+              <RulesetPicker
+                value={ruleset}
+                onChange={setRuleset}
+                disabled={Boolean(lockedRuleset)}
                 compact
-                context={gameContext}
-                onChange={setGameContext}
-                className="border-0 bg-transparent p-0 shadow-none"
               />
-              <Button
-                type="button"
-                size="sm"
-                disabled={standardCount < 14}
-                onClick={handleCalculate}
-                className="scan-cta shrink-0 gap-1.5 rounded-none font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-40"
-              >
-                <Trophy className="size-3.5" />
-                Hitung · {standardCount}/14
-              </Button>
+              {scoreFan > 0 ? (
+                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {scoreFan} Faan · B {formatJadeMiles(payout.basePoints)} →
+                  winner {formatJadeMiles(winnerPoints)}
+                </p>
+              ) : null}
             </div>
 
             <DndContext
@@ -452,7 +471,7 @@ export function HandLogModal({
                     combos:
                       scoreCombos.length > 0
                         ? scoreCombos
-                        : [{ label: `${scoreFan} Fan HKOS`, fan: scoreFan }],
+                        : [{ label: `${scoreFan} Faan Jade`, fan: scoreFan }],
                     points: winnerPoints,
                     winnerSeatIndex,
                     method,

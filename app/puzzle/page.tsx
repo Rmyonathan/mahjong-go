@@ -14,16 +14,21 @@ type CommunityRow = {
   pct: number
 }
 
+type DiscardOption = {
+  discardId: string
+  discardLabel: string
+  grade: "best" | "good" | "okay" | "slow" | "hurts"
+  gradeLabel: string
+  readyLabel: string
+  why: string
+  next: string
+  isIdeal: boolean
+}
+
 type Breakdown = {
-  shanten: number
-  standardShanten: number
-  special: { sevenPairs: number; thirteenOrphans: number }
-  options: {
-    discardId: string
-    discardLabel: string
-    shantenAfterDiscard: number
-    standardShanten: number
-  }[]
+  readyLabel: string
+  readyDetail: string
+  options: DiscardOption[]
 }
 
 type PuzzlePayload = {
@@ -43,6 +48,14 @@ type PuzzlePayload = {
     coachNote: string | null
     breakdown: Breakdown | null
   } | null
+}
+
+const GRADE_TONE: Record<DiscardOption["grade"], string> = {
+  best: "border-jade-accent bg-jade-accent/10 text-jade-accent",
+  good: "border-jade-accent/50 bg-card text-jade-accent",
+  okay: "border-jade-ink/30 bg-muted text-jade-ink",
+  slow: "border-amber-700/40 bg-amber-50 text-amber-900",
+  hurts: "border-jade-red bg-card text-jade-red",
 }
 
 export default function PuzzlePage() {
@@ -108,6 +121,10 @@ export default function PuzzlePage() {
 
   const { puzzle, community, totalVotes, myVote, isPro, reveal } = data
   const uniqueTiles = [...new Set(puzzle.tileIds)]
+  const myOption = reveal?.breakdown?.options.find(
+    (opt) => opt.discardId === myVote,
+  )
+  const idealOption = reveal?.breakdown?.options.find((opt) => opt.isIdeal)
 
   return (
     <main className="relative mx-auto w-full max-w-3xl flex-1 overflow-hidden px-4 py-8 sm:px-6 sm:py-10">
@@ -118,8 +135,8 @@ export default function PuzzlePage() {
         What would you discard?
       </h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        {puzzle.title} — vote with the club. Pro unlocks shanten math +{" "}
-        {puzzle.coachName}&apos;s note.
+        {puzzle.title} — vote with the club. Pro unlocks {puzzle.coachName}
+        &apos;s full read: why each throw helps or hurts, and what comes next.
       </p>
 
       <section className="jade-card mt-8 p-4 sm:p-5">
@@ -190,7 +207,10 @@ export default function PuzzlePage() {
             {community.map((row) => (
               <li key={row.discardTileId}>
                 <div className="flex items-baseline justify-between gap-3 font-mono text-xs uppercase tracking-[0.12em]">
-                  <span>{TILE_BY_ID[row.discardTileId]?.label ?? row.discardTileId}</span>
+                  <span>
+                    {TILE_BY_ID[row.discardTileId]?.label ?? row.discardTileId}
+                    {row.discardTileId === myVote ? " · you" : ""}
+                  </span>
                   <span>{row.pct}%</span>
                 </div>
                 <div className="mt-1 h-2 border border-jade-ink bg-parchment">
@@ -215,28 +235,88 @@ export default function PuzzlePage() {
           </p>
           <h2 className="mt-2 font-serif text-2xl">Coach breakdown</h2>
           <p className="mt-3 text-sm leading-relaxed">{reveal.coachNote}</p>
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            Ideal discard ·{" "}
-            {TILE_BY_ID[reveal.idealDiscardId ?? ""]?.label ?? "—"}
+
+          <div className="mt-5 border-[2px] border-jade-ink/20 bg-parchment px-3 py-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Hand right now
+            </p>
+            <p className="mt-1 font-serif text-xl leading-none">
+              {reveal.breakdown.readyLabel}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {reveal.breakdown.readyDetail}
+            </p>
+          </div>
+
+          {idealOption ? (
+            <div className="mt-4 border-[2px] border-jade-accent bg-jade-accent/5 px-3 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                Ideal discard · {idealOption.discardLabel}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed">{idealOption.why}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {idealOption.next}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Ideal discard ·{" "}
+              {TILE_BY_ID[reveal.idealDiscardId ?? ""]?.label ?? "—"}
+            </p>
+          )}
+
+          {myOption && !myOption.isIdeal ? (
+            <div className="mt-4 border border-jade-ink/25 bg-card px-3 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Your pick · {myOption.discardLabel} · {myOption.gradeLabel}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed">{myOption.why}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {myOption.next}
+              </p>
+            </div>
+          ) : null}
+
+          <h3 className="mt-6 font-serif text-xl">Every discard, ranked</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Why each throw is good or bad — and what the next draws look like.
           </p>
-          <p className="mt-2 font-mono text-sm">
-            Hand shanten {reveal.breakdown.shanten} · standard{" "}
-            {reveal.breakdown.standardShanten}
-          </p>
-          <ul className="mt-4 space-y-2 border-t border-jade-accent/30 pt-4">
+          <ul className="mt-4 space-y-3">
             {reveal.breakdown.options.map((opt) => (
               <li
                 key={opt.discardId}
-                className="flex justify-between gap-3 font-mono text-xs uppercase tracking-[0.12em]"
+                className={cn(
+                  "border-[2px] px-3 py-3",
+                  opt.isIdeal
+                    ? "border-jade-accent bg-jade-accent/5"
+                    : "border-jade-ink/20 bg-card",
+                )}
               >
-                <span
-                  className={cn(
-                    opt.discardId === reveal.idealDiscardId && "text-jade-accent",
-                  )}
-                >
-                  Discard {opt.discardLabel}
-                </span>
-                <span>shanten → {opt.shantenAfterDiscard}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-serif text-lg leading-none">
+                    Discard {opt.discardLabel}
+                  </p>
+                  <span
+                    className={cn(
+                      "border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]",
+                      GRADE_TONE[opt.grade],
+                    )}
+                  >
+                    {opt.gradeLabel}
+                  </span>
+                  {opt.discardId === myVote ? (
+                    <span className="border border-jade-ink bg-jade-ink px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-white">
+                      Your vote
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  After throw · {opt.readyLabel}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed">{opt.why}</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {opt.next}
+                </p>
               </li>
             ))}
           </ul>
@@ -247,8 +327,9 @@ export default function PuzzlePage() {
         <section className="jade-card mt-6 p-4">
           <h2 className="font-serif text-2xl">Pro unlock</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Shanten ladder + {puzzle.coachName}&apos;s note stay behind Pro —
-            same math engine as Scan.
+            {puzzle.coachName}&apos;s full read — why each discard helps or
+            hurts, what the hand needs next, and the ideal throw — stays behind
+            Pro.
           </p>
           <button
             type="button"

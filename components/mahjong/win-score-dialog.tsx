@@ -3,7 +3,6 @@
 import * as React from "react"
 import { Trophy } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -12,13 +11,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import type { ScoreResult } from "@/lib/mahjong/engine"
-import { getHkosPayout } from "@/lib/mahjong/payout"
+import { formatJadeMiles, getJadePayout } from "@/lib/mahjong/payout"
+import { rulesetMeta } from "@/lib/mahjong/rulesets"
+import { cn } from "@/lib/utils"
 
 interface WinScoreDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   score: ScoreResult | null
-  /** When set, offer applying this HKOS result back to a live table. */
   applyToSessionId?: string | null
   tileIds?: string[]
   onApplyToSession?: (payload: {
@@ -40,76 +40,102 @@ export function WinScoreDialog({
 }: WinScoreDialogProps) {
   if (!score) return null
 
-  const payout = getHkosPayout(score.totalFan)
+  const payout = getJadePayout(score.totalFan)
+  const meta = rulesetMeta(score.variant)
   const handPatterns = score.patterns.filter(
-    (p) => !p.key.startsWith("own-bonus") && p.key !== "no-flowers",
+    (p) =>
+      !p.key.startsWith("own-bonus") &&
+      !p.key.startsWith("round-bonus") &&
+      p.key !== "no-flowers",
   )
   const flowerPatterns = score.patterns.filter(
-    (p) => p.key.startsWith("own-bonus") || p.key === "no-flowers" || p.key.startsWith("set-of-"),
+    (p) =>
+      p.key.startsWith("own-bonus") ||
+      p.key.startsWith("round-bonus") ||
+      p.key.startsWith("set-of-"),
   )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showClose
-        className="max-h-[90vh] w-[90vw] max-w-lg gap-0 overflow-hidden border-amber-500/30 bg-slate-950 p-0 text-slate-100"
+        className="max-h-[90vh] w-[min(100vw-1.5rem,28rem)] gap-0 overflow-hidden border-[2px] border-jade-ink bg-parchment p-0 text-jade-ink shadow-[6px_6px_0_0_var(--jade-ink)]"
       >
-        <div className="bg-gradient-to-br from-amber-600/30 via-slate-950 to-emerald-900/20 px-6 py-6">
+        <div className="border-b-[2px] border-jade-ink bg-jade-accent/15 px-5 py-5">
           <DialogHeader className="text-left">
-            <DialogTitle className="flex items-center gap-3 text-2xl text-amber-100">
-              <span className="grid size-12 place-items-center rounded-2xl bg-amber-500/20 text-amber-300">
-                <Trophy className="size-6" />
+            <DialogTitle className="flex items-center gap-3 font-serif text-2xl text-jade-ink">
+              <span className="grid size-11 place-items-center border-[2px] border-jade-ink bg-jade-accent text-parchment shadow-[3px_3px_0_0_var(--jade-ink)]">
+                <Trophy className="size-5" />
               </span>
               Tangan Menang!
             </DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Rincian Fan Hong Kong Old Style &amp; tabel bayaran.
+            <DialogDescription className="text-sm text-jade-ink/70">
+              {meta.label} · Jade Miles (per 1.000) — bukan uang tunai.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-5 flex items-end justify-between gap-4">
+          {score.variant === "chicken" ? (
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-ink/60">
+              Chicken: tanpa Faan HK (Flush, Toitoi, …). Kong, Double Chi, &
+              Bunga tetap dihitung.
+            </p>
+          ) : null}
+
+          <div className="mt-4 flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                Total Fan
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Total Faan
               </p>
-              <p className="text-5xl font-black tabular-nums text-amber-300">
+              <p className="font-serif text-5xl tabular-nums text-jade-accent">
                 {score.totalFan}
+              </p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">
+                Base B = {formatJadeMiles(payout.basePoints)} Jade Miles
               </p>
             </div>
             {score.isLimitHand ? (
-              <Badge className="bg-rose-600 text-white">Limit Hand</Badge>
+              <span className="border border-jade-ink bg-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-parchment">
+                Limit 10
+              </span>
             ) : null}
           </div>
         </div>
 
-        <div className="max-h-[min(50vh,400px)] overflow-y-auto px-6 py-4">
+        <div className="max-h-[min(50vh,360px)] overflow-y-auto px-5 py-4">
+          {!score.isValidHand ? (
+            <p className="mb-4 border-[2px] border-jade-red/40 bg-jade-red/10 px-3 py-2 text-sm text-jade-red">
+              {score.messages.find((m) =>
+                m.includes("minimal") || m.includes("Struktur"),
+              ) ??
+                score.messages[0] ??
+                "Struktur tangan belum valid menurut hitungan meja ini."}
+            </p>
+          ) : null}
+
           {handPatterns.length > 0 ? (
             <section className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                 Pola Tangan
               </h3>
               <ul className="flex flex-col gap-2">
                 {handPatterns.map((pattern) => (
                   <li
                     key={pattern.key}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2"
+                    className="jade-card flex items-start justify-between gap-2 p-3"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-100">
+                      <p className="font-serif text-base leading-tight">
                         {pattern.name}
                       </p>
                       {pattern.description ? (
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
                           {pattern.description}
                         </p>
                       ) : null}
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 border-amber-900/50 bg-amber-950/50 tabular-nums text-amber-200"
-                    >
-                      {pattern.fan} Fan
-                    </Badge>
+                    <span className="shrink-0 border border-jade-ink bg-card px-2 py-0.5 font-mono text-[10px] tabular-nums">
+                      {pattern.fan} F
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -118,79 +144,73 @@ export function WinScoreDialog({
 
           {flowerPatterns.length > 0 ? (
             <section className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                 Bunga &amp; Musim
               </h3>
               <ul className="flex flex-col gap-2">
                 {flowerPatterns.map((pattern) => (
                   <li
                     key={pattern.key}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2"
+                    className="jade-card flex items-center justify-between gap-2 p-3"
                   >
-                    <span className="text-sm text-slate-300">{pattern.name}</span>
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 tabular-nums text-slate-200"
-                    >
-                      {pattern.fan} Fan
-                    </Badge>
+                    <span className="text-sm">{pattern.name}</span>
+                    <span className="font-mono text-[10px] tabular-nums">
+                      {pattern.fan} F
+                    </span>
                   </li>
                 ))}
               </ul>
             </section>
           ) : null}
-
-          {!score.isValidHand ? (
-            <p className="rounded-lg border border-rose-900/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-300">
-              Struktur tangan belum valid menurut aturan standar.
-            </p>
-          ) : null}
         </div>
 
-        <div className="border-t border-slate-800 bg-slate-900/80 px-6 py-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Tabel Bayaran HKOS
+        <div className="border-t-[2px] border-jade-ink bg-card px-5 py-4">
+          <h3 className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            Bayaran · Jade Miles
           </h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs text-slate-500">Ron (1 lawan)</p>
-              <p className="text-xl font-bold tabular-nums text-emerald-300">
-                {payout.perOpponentRon}
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            {score.totalFan} Faan = Base {formatJadeMiles(payout.basePoints)} →
+            Discard +{formatJadeMiles(payout.winnerDiscard)} · Self-draw +
+            {formatJadeMiles(payout.winnerSelfDraw)}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div
+              className={cn(
+                "border-[2px] border-jade-ink bg-parchment p-3",
+                score.isValidHand && "jade-card-accent",
+              )}
+            >
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                Discard
+              </p>
+              <p className="font-mono text-lg font-semibold tabular-nums text-jade-accent">
+                +{formatJadeMiles(payout.winnerDiscard)}
+              </p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Penyuap −{formatJadeMiles(payout.discarderPays)}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs text-slate-500">Ron (3 lawan)</p>
-              <p className="text-xl font-bold tabular-nums text-emerald-300">
-                {payout.totalRon}
+            <div className="border-[2px] border-jade-ink bg-parchment p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                Self-draw
               </p>
-            </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs text-slate-500">Tsumo (per lawan)</p>
-              <p className="text-lg font-semibold tabular-nums text-sky-300">
-                {payout.perOpponentTsumo}
+              <p className="font-mono text-lg font-semibold tabular-nums">
+                +{formatJadeMiles(payout.winnerSelfDraw)}
               </p>
-            </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-              <p className="text-xs text-slate-500">Tsumo (total)</p>
-              <p className="text-lg font-semibold tabular-nums text-sky-300">
-                {payout.totalTsumo}
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Tiap lawan −{formatJadeMiles(payout.eachPaysSelfDraw)}
               </p>
             </div>
           </div>
-          {payout.isLimit ? (
-            <p className="mt-2 text-center text-xs text-amber-400/80">
-              Limit Hand — bayaran maksimum {payout.perOpponentRon} per lawan.
-            </p>
-          ) : null}
 
-          {applyToSessionId && onApplyToSession ? (
+          {applyToSessionId && onApplyToSession && score.isValidHand ? (
             <button
               type="button"
               onClick={() =>
                 onApplyToSession({
                   totalFan: score.totalFan,
-                  pointsRon: payout.perOpponentRon,
-                  pointsTsumo: payout.totalTsumo,
+                  pointsRon: payout.winnerDiscard,
+                  pointsTsumo: payout.winnerSelfDraw,
                   combos: score.patterns.map((pattern) => ({
                     label: pattern.name,
                     fan: pattern.fan,
@@ -198,7 +218,7 @@ export function WinScoreDialog({
                   tileIds,
                 })
               }
-              className="mt-4 inline-flex h-11 w-full items-center justify-center border-[2px] border-amber-400 bg-amber-500/20 font-mono text-[11px] uppercase tracking-[0.14em] text-amber-100"
+              className="scan-cta mt-4 inline-flex h-11 w-full items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.14em]"
             >
               Apply to live table →
             </button>

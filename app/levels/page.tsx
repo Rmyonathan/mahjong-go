@@ -49,7 +49,8 @@ export default function LevelsPage() {
           <div>
             <h2 className="font-serif text-3xl uppercase">Experience levels</h2>
             <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Ten bands from Novice to Jade Immortal. Lifetime only — never demoted.
+              Ten house bands from Pemula to Jade Immortal. Lifetime only — never
+              demoted.
             </p>
           </div>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">

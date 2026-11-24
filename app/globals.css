@@ -154,8 +154,7 @@
   }
   @media (max-width: 1023px) {
     body:has(.calculator-shell) .site-header,
-    body:has(.calculator-shell) .site-footer,
-    body:has(.calculator-shell) .mobile-bottom-nav {
+    body:has(.calculator-shell) .site-footer {
       @apply hidden;
     }
   }

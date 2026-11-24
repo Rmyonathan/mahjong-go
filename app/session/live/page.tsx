@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
-import { Share2 } from "lucide-react"
+import { ChevronLeft, Share2 } from "lucide-react"
 
 import { FormSquares } from "@/components/jade/form-squares"
 import { TileStrip } from "@/components/jade/tile-strip"
@@ -58,6 +58,7 @@ function LiveSessionInner() {
   const [session, setSession] = useState<LiveSession | null>(null)
   const [ready, setReady] = useState(false)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [remainingMs, setRemainingMs] = useState<number | null>(null)
   const [handLogOpen, setHandLogOpen] = useState(false)
   const [cameraScanOpen, setCameraScanOpen] = useState(false)
   const [isPro, setIsPro] = useState(false)
@@ -88,7 +89,7 @@ function LiveSessionInner() {
 
   useEffect(() => {
     if (!sessionId) {
-      router.replace("/session/new?mode=live")
+      router.replace("/schedule?create=1")
       return
     }
     void refresh(sessionId)
@@ -96,19 +97,30 @@ function LiveSessionInner() {
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : ""
         if (message === "Login required") return
-        router.replace("/session/new?mode=live")
+        router.replace("/schedule?create=1")
       })
   }, [sessionId, refresh, router])
 
   useEffect(() => {
     if (!session || session.status !== "live") return
     const tick = () => {
-      setElapsedMs(Date.now() - new Date(session.startedAt).getTime())
+      const now = Date.now()
+      setElapsedMs(now - new Date(session.startedAt).getTime())
+      if (session.expiresAt) {
+        const left = new Date(session.expiresAt).getTime() - now
+        setRemainingMs(Math.max(0, left))
+        // Soft refresh when the Free/Pro clock hits zero so server can auto-finish
+        if (left <= 0 && sessionId) {
+          void refresh(sessionId).catch(() => undefined)
+        }
+      } else {
+        setRemainingMs(null)
+      }
     }
     tick()
     const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
-  }, [session])
+  }, [session, sessionId, refresh])
 
   useEffect(() => {
     let cancelled = false
@@ -269,6 +281,7 @@ function LiveSessionInner() {
     return (
       <FinalStandings
         session={session}
+        isPro={isPro}
         onShare={shareStandings}
       />
     )
@@ -276,6 +289,13 @@ function LiveSessionInner() {
 
   return (
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+      <Link
+        href="/live"
+        className="tap-press mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-jade-accent"
+      >
+        <ChevronLeft className="size-4" aria-hidden />
+        Live tables
+      </Link>
       <div className="jade-card flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <span className="inline-flex items-center gap-2 border-[2px] border-jade-accent bg-card px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-jade-accent">
@@ -285,6 +305,24 @@ function LiveSessionInner() {
           <span className="font-mono text-sm tabular-nums">
             {formatElapsed(elapsedMs)}
           </span>
+          {session.durationTier === "club" ? (
+            <span className="border border-jade-gold/40 bg-jade-gold/15 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+              Club · no auto-end
+            </span>
+          ) : remainingMs != null ? (
+            <span
+              className={cn(
+                "border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                remainingMs < 15 * 60 * 1000
+                  ? "border-jade-red bg-card text-jade-red"
+                  : "border-jade-ink bg-parchment",
+              )}
+            >
+              {session.durationTier === "pro" ? "Pro" : "Free"} ·{" "}
+              {formatElapsed(remainingMs)} left
+              {session.maxHours ? ` / ${session.maxHours}h` : ""}
+            </span>
+          ) : null}
           <span className="border border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             {roundBadge(session)}
           </span>
@@ -292,7 +330,9 @@ function LiveSessionInner() {
             Hand #{session.handNumber}
           </span>
           <span className="border border-jade-ink bg-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white">
-            {session.board}
+            {session.scoringRuleset === "chicken"
+              ? "Chicken Hand"
+              : "Jade HK"}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -438,12 +478,14 @@ function LiveSessionInner() {
       <HandLogModal
         open={handLogOpen}
         seats={session.seats}
+        ruleset={session.scoringRuleset ?? "jade-hk"}
         onClose={() => setHandLogOpen(false)}
         onConfirm={logConfirmed}
       />
       <CameraScanModal
         open={cameraScanOpen}
         seats={session.seats}
+        ruleset={session.scoringRuleset ?? "jade-hk"}
         onClose={() => setCameraScanOpen(false)}
         onConfirm={(hand) => {
           setCameraScanOpen(false)
@@ -649,9 +691,11 @@ function LiveScoreRace({ session }: { session: LiveSession }) {
 
 function FinalStandings({
   session,
+  isPro,
   onShare,
 }: {
   session: LiveSession
+  isPro: boolean
   onShare: () => void
 }) {
   const ranked = [...session.seats]
@@ -737,6 +781,12 @@ function FinalStandings({
 
       <div className="mt-8 flex flex-wrap gap-3">
         <SessionNewspaperButton session={session} />
+        <Link
+          href={`/session/${session.id}`}
+          className="scan-cta inline-flex h-11 items-center px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+        >
+          Full ledger · hand posts →
+        </Link>
         <button
           type="button"
           onClick={onShare}
@@ -746,17 +796,15 @@ function FinalStandings({
           Share text standings
         </button>
         <Link
-          href="/leaderboard"
-          className="inline-flex h-11 items-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
-        >
-          Back to leaderboard
-        </Link>
-        <Link
-          href="/session/new?mode=live"
+          href="/schedule?create=1"
           className="inline-flex h-11 items-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
         >
           New session
         </Link>
+      </div>
+
+      <div className="mt-8">
+        <LiveGameLog session={session} isPro={isPro} />
       </div>
     </main>
   )

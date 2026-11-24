@@ -58,6 +58,17 @@ export default function AboutPage() {
           will point at the wall and deal again. If you already chase Jade Immortal,
           there is still a chair — and a WhatsApp thread for the next open table.
         </p>
+        <p>
+          Hitungan meja memakai{" "}
+          <Link href="/combos?view=hk" className="underline underline-offset-2">
+            Jade HK Modified
+          </Link>{" "}
+          atau Chicken Hand — Faan ke Jade Miles (per 1.000), bukan uang. Lihat{" "}
+          <Link href="/combos" className="underline underline-offset-2">
+            daftar combo
+          </Link>{" "}
+          dan panduan lengkap di /hk.
+        </p>
       </div>
 
       <section className="relative mt-14" aria-label="Inside the house">

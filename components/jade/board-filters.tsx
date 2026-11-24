@@ -7,7 +7,8 @@ import { MonitorPlay, Share2 } from "lucide-react"
 import type { BoardTier } from "@/lib/mock/jade-board"
 import { cn } from "@/lib/utils"
 
-const BOARDS: { id: BoardTier; label: string }[] = [
+const BOARDS: { id: BoardTier | "all"; label: string }[] = [
+  { id: "all", label: "All" },
   { id: "beginner", label: "Beginner" },
   { id: "advanced", label: "Advanced" },
   { id: "mcr", label: "MCR" },
@@ -17,13 +18,16 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const boardParam = searchParams.get("board")
-  const board: BoardTier =
-    boardParam === "beginner" || boardParam === "mcr" || boardParam === "advanced"
+  const board: BoardTier | "all" =
+    boardParam === "beginner" ||
+    boardParam === "mcr" ||
+    boardParam === "advanced" ||
+    boardParam === "all"
       ? boardParam
-      : "advanced"
+      : "all"
   const q = searchParams.get("q")
 
-  function setBoard(next: BoardTier) {
+  function setBoard(next: BoardTier | "all") {
     const params = new URLSearchParams()
     if (q) params.set("q", q)
     params.set("board", next)
@@ -93,10 +97,6 @@ export function BoardFilters({ seasonLabel }: { seasonLabel: string }) {
           TV Mode
         </Link>
       </div>
-
-      <Link href="/leaderboard?board=advanced" className="sr-only">
-        Advanced board
-      </Link>
     </div>
   )
 }

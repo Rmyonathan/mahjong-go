@@ -15,13 +15,17 @@ export default async function AdminPartnerPage() {
     <div className="space-y-8">
       <div>
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Read-only · {stats.monthLabel}
+          Live Postgres · {stats.monthLabel}
         </p>
         <h2 className="mt-1 font-serif text-4xl">Partner desk</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Club pulse for your coach partner — members, active Pro, and her live
-          commission mix (Pro {stats.pricing.proSharePct}% + coaching{" "}
-          {stats.pricing.coachingSharePct}%).
+          Real club counts from your database — not seed revenue fiction.
+          Members = User rows, Pro = active membershipTier, commission =
+          (Pros granted/renewed this month × Rp{" "}
+          {stats.pricing.proAmountIdr.toLocaleString("id-ID")} ×{" "}
+          {stats.pricing.proSharePct}%) + coaching bookings ×{" "}
+          {stats.pricing.coachingSharePct}%. Small club → small numbers until
+          real QRIS Pros land.
         </p>
       </div>
 

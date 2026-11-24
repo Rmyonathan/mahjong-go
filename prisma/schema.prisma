@@ -24,10 +24,18 @@ enum MeetBoardType {
   GUIDED
 }
 
+/// Table hitungan — Chicken (0 Faan OK) vs Jade HK Modified (min 1 Faan)
+enum ScoringRuleset {
+  CHICKEN
+  JADE_HK
+}
+
 enum MeetStatus {
   OPEN
   FULL
   COMPLETED
+  /// Removed from schedule UI only — meet + bookings + sessions stay in DB
+  CANCELLED
 }
 
 enum MeetVisibility {
@@ -175,6 +183,8 @@ model GameSession {
   id            String         @id @default(cuid())
   title         String
   boardType     MeetBoardType
+  /// Chicken Hand vs Jade HK Modified — same engine as /scan
+  scoringRuleset ScoringRuleset @default(JADE_HK)
   status        SessionStatus  @default(LIVE)
   meetId        String?
   meet          Meet?          @relation(fields: [meetId], references: [id], onDelete: SetNull)
@@ -244,6 +254,8 @@ model Meet {
   endsAt            DateTime
   location          String
   boardType         MeetBoardType
+  /// Hitungan for live tables launched from this meet
+  scoringRuleset    ScoringRuleset @default(JADE_HK)
   maxSeats          Int
   tables            Int           @default(1)
   feeIdr            Int
@@ -334,4 +346,15 @@ model BountyClaim {
 
   @@unique([userId, bountyId])
   @@index([userId, weekKey])
+}
+
+/// Active weekly quest set (default or AI-picked from verifiable catalog).
+model WeeklyBountyWeek {
+  id          String   @id @default(cuid())
+  weekKey     String   @unique
+  /// JSON array of WeeklyBounty { key, title, blurb, xp, howTo }
+  questsJson  Json
+  source      String   @default("default")
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

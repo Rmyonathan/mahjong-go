@@ -4,15 +4,26 @@ import { useState } from "react"
 import { Share2 } from "lucide-react"
 
 import { TileStrip } from "@/components/jade/tile-strip"
+import { ShareWinCardButton } from "@/components/share/win-story-card"
 import { getPlayer } from "@/lib/mock/jade-data"
 import {
   formatSignedPoints,
   type SessionDetail,
   type SessionHand,
 } from "@/lib/mock/jade-board"
+import type { LiveSession } from "@/lib/session/live-demo"
 import { cn } from "@/lib/utils"
 
-export function GameLog({ session }: { session: SessionDetail }) {
+export function GameLog({
+  session,
+  liveShare,
+  isPro = false,
+}: {
+  session: SessionDetail
+  /** When set, each win gets the IG hand-post card (same as live table). */
+  liveShare?: LiveSession | null
+  isPro?: boolean
+}) {
   const [tab, setTab] = useState<"hands" | "scoreboard">("hands")
 
   return (
@@ -50,8 +61,16 @@ export function GameLog({ session }: { session: SessionDetail }) {
 
       {tab === "hands" ? (
         <ol className="divide-y divide-jade-ink/30">
-          {session.hands.map((hand) => (
-            <HandRow key={hand.id} hand={hand} playerIds={session.playerIds} />
+          {session.hands.map((hand, handIndex) => (
+            <HandRow
+              key={hand.id}
+              hand={hand}
+              playerIds={session.playerIds}
+              sessionTitle={session.title}
+              liveShare={liveShare}
+              handIndex={handIndex}
+              isPro={isPro}
+            />
           ))}
         </ol>
       ) : (
@@ -115,12 +134,29 @@ export function GameLog({ session }: { session: SessionDetail }) {
 function HandRow({
   hand,
   playerIds,
+  sessionTitle,
+  liveShare,
+  handIndex,
+  isPro,
 }: {
   hand: SessionHand
   playerIds: string[]
+  sessionTitle: string
+  liveShare?: LiveSession | null
+  handIndex: number
+  isPro: boolean
 }) {
   const winner = getPlayer(hand.winnerId)
   const dealtBy = hand.dealtById ? getPlayer(hand.dealtById) : null
+  const liveHand = liveShare?.hands[handIndex]
+  const liveWinner =
+    liveHand && liveHand.winnerSeatIndex >= 0
+      ? liveShare?.seats[liveHand.winnerSeatIndex]
+      : null
+  const points =
+    hand.points && hand.points > 0
+      ? hand.points
+      : Math.max(0, ...Object.values(hand.deltas).filter((v) => v > 0), 0)
 
   async function shareHand() {
     const text = `Hand ${String(hand.handNo).padStart(2, "0")} · ${winner.nickname} · ${hand.combos.map((c) => c.label).join(", ")}`
@@ -144,12 +180,14 @@ function HandRow({
               {String(hand.handNo).padStart(2, "0")}
             </span>
             <span className="truncate font-serif text-lg leading-none sm:text-xl">
-              {winner.name}
+              {hand.isDraw ? "Draw" : winner.name}
             </span>
             <span className="rounded-full bg-jade-soft px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-jade-accent">
-              {hand.method === "self-draw"
-                ? "Self-draw"
-                : `Off ${dealtBy?.nickname ?? "—"}`}
+              {hand.isDraw
+                ? "Wall game"
+                : hand.method === "self-draw"
+                  ? "Self-draw"
+                  : `Off ${dealtBy?.nickname ?? "—"}`}
             </span>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -163,15 +201,32 @@ function HandRow({
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={shareHand}
-          className="tap-press inline-flex shrink-0 items-center gap-1 rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.12em] sm:text-[10px]"
-          aria-label="Share this hand"
-        >
-          <Share2 className="size-3" />
-          <span className="hidden sm:inline">Share</span>
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {!hand.isDraw && (liveWinner || winner) ? (
+            <ShareWinCardButton
+              isPro={isPro}
+              hand={{
+                sessionTitle,
+                handNo: hand.handNo,
+                winnerName: liveWinner?.name ?? winner.name,
+                method: hand.method,
+                points,
+                combos: hand.combos,
+                tileIds: hand.tileIds,
+                winningTileId: hand.winningTileId,
+              }}
+            />
+          ) : null}
+          <button
+            type="button"
+            onClick={shareHand}
+            className="tap-press inline-flex items-center gap-1 rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.12em] sm:text-[10px]"
+            aria-label="Share this hand as text"
+          >
+            <Share2 className="size-3" />
+            <span className="hidden sm:inline">Text</span>
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 -mx-1 overflow-x-auto px-1">

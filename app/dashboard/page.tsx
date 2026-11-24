@@ -1,280 +1,299 @@
-"use client"
-
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { redirect } from "next/navigation"
 
+import { DashboardBounties } from "@/components/dashboard/dashboard-bounties"
+import { DashboardPuzzleCard } from "@/components/dashboard/dashboard-puzzle-card"
+import { SessionHistoryList } from "@/components/session/session-history-list"
+import { getSessionUser } from "@/lib/auth"
+import { getPlayerProfile } from "@/lib/data/player-profile"
+import {
+  getLiveSessionsForUser,
+  getNextBookedMeet,
+  getPersonalSessionHistory,
+} from "@/lib/data/session-history"
+import { prisma } from "@/lib/db"
+import { isProMembership, membershipLabelForUser } from "@/lib/membership"
+import { formatSignedPoints } from "@/lib/mock/jade-board"
+import { boardLabel } from "@/lib/schedule/types"
 import { cn } from "@/lib/utils"
 
-type BountyRow = {
-  key: string
-  title: string
-  blurb: string
-  xp: number
-  howTo: string
-  bountyId: string
-  claimed: boolean
-  eligible: boolean
-  reason: string
+export const dynamic = "force-dynamic"
+
+export const metadata = {
+  title: "Home — Jade Mahjong",
 }
 
-type XpProgressPayload = {
-  xp: number
-  level: number
-  bandTitle: string
-  bandRange: string
-  experienceLevelName: string
-  xpIntoLevel: number
-  xpForNextLevel: number
-  pctToNext: number
-  nextBandTitle: string | null
-  xpToNextBand: number | null
-}
+export default async function DashboardPage() {
+  const session = await getSessionUser()
+  if (!session) redirect("/login?next=/dashboard")
 
-export default function DashboardPage() {
-  const [weekKey, setWeekKey] = useState("")
-  const [bounties, setBounties] = useState<BountyRow[]>([])
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [name, setName] = useState("")
-  const [progress, setProgress] = useState<XpProgressPayload | null>(null)
-  const [pendingKey, setPendingKey] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const user = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      membershipTier: true,
+      proExpiresAt: true,
+      playerId: true,
+    },
+  })
+  if (!user) redirect("/login")
 
-  const refresh = useCallback(async () => {
-    const [bountyRes, xpRes] = await Promise.all([
-      fetch("/api/bounty"),
-      fetch("/api/xp/me"),
-    ])
-    if (bountyRes.ok) {
-      const data = (await bountyRes.json()) as {
-        weekKey: string
-        loggedIn: boolean
-        bounties: BountyRow[]
-      }
-      setWeekKey(data.weekKey)
-      setBounties(data.bounties)
-      setLoggedIn(data.loggedIn)
-    }
-    if (xpRes.ok) {
-      const data = (await xpRes.json()) as {
-        user?: { name?: string } | null
-        progress?: XpProgressPayload | null
-      }
-      if (data.user?.name) setName(data.user.name)
-      setProgress(data.progress ?? null)
-    }
-  }, [])
+  const isPro = isProMembership(user)
+  const isClubLeader = user.role === "ADMIN"
+  const membershipLabel = membershipLabelForUser(user)
+  const firstName = user.name.split(" ")[0] ?? user.name
 
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  const [profile, history, liveSessions, nextMeet] = await Promise.all([
+    user.playerId ? getPlayerProfile(user.playerId) : Promise.resolve(null),
+    getPersonalSessionHistory(user.id, { isPro }),
+    getLiveSessionsForUser(user.id),
+    getNextBookedMeet(user.id),
+  ])
 
-  async function claim(key: string) {
-    if (!loggedIn) {
-      window.location.href = `/login?next=${encodeURIComponent("/dashboard")}`
-      return
-    }
-    setPendingKey(key)
-    setError(null)
-    try {
-      const response = await fetch("/api/bounty", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      })
-      const data = (await response.json()) as { error?: string }
-      if (!response.ok) {
-        setError(data.error ?? "Claim failed")
-        return
-      }
-      await refresh()
-    } finally {
-      setPendingKey(null)
-    }
-  }
+  const live = liveSessions[0] ?? null
+  const seasonPoints = profile?.seasonPoints ?? 0
+  const winRate = profile?.winRateLabel ?? "—"
+  const games = profile?.games ?? 0
+  // Simple streak: consecutive finished sessions with net >= 0 from newest
+  const streak = history.visible.reduce((count, row) => {
+    if (count === -1) return count
+    if (row.netPoints >= 0) return count + 1
+    return -1
+  }, 0)
+  const streakLabel = streak < 0 ? 0 : streak
 
   return (
     <main className="relative mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-      <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-        Weekdays · retention hub
-      </p>
-      <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9]">
-        {name ? `Hey ${name.split(" ")[0]}` : "Dashboard"}
-      </h1>
-      <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-        Open Jade Mon–Thu: daily WWYD, coaching film, and weekly bounties that
-        pay XP toward your house pangkat.
-      </p>
+      {/* Hero */}
+      <section className="jade-card overflow-hidden p-4 sm:p-6">
+        <div className="flex w-full min-w-0 flex-col gap-4">
+          <div className="w-full min-w-0">
+            <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+              Member home
+            </p>
+            <h1 className="mt-2 font-serif text-3xl leading-tight break-words sm:text-5xl">
+              Welcome back, {firstName}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]",
+                  isClubLeader
+                    ? "border-jade-ink bg-jade-ink text-white"
+                    : isPro
+                      ? "border-jade-gold bg-jade-gold/25 text-jade-ink"
+                      : "border-[#102A20]/15 bg-white",
+                )}
+              >
+                {membershipLabel}
+              </span>
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {profile ? (
+                <>
+                  <span className="rounded-full border border-jade-ink bg-parchment px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+                    LV {profile.experienceLevelNumber} ·{" "}
+                    {profile.experienceBandTitle}
+                  </span>
+                  <span className="rounded-full border border-jade-accent/40 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                    {profile.skillTierName} · {profile.skillRating}
+                  </span>
+                </>
+              ) : (
+                <Link
+                  href="/me"
+                  className="rounded-full border border-jade-ink px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]"
+                >
+                  Link player profile →
+                </Link>
+              )}
+            </div>
 
-      {progress ? (
-        <section className="jade-card mt-8 p-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
+            {profile ? (
+              <div className="mt-4 max-w-md">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                    XP · level up
+                  </p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.12em] sm:text-right">
+                    {profile.xpIntoLevel}/{profile.xpForNextLevel} XP
+                    {profile.experienceLevelNumber < 100
+                      ? ` → LV ${profile.experienceLevelNumber + 1}`
+                      : " · max"}
+                  </p>
+                </div>
+                <div className="mt-1.5 h-2.5 border-[2px] border-jade-ink bg-parchment">
+                  <div
+                    className="h-full bg-jade-accent transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, profile.pctToNextLevel))}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {profile.experienceXp} XP total ·{" "}
+                  <Link href="/levels" className="underline underline-offset-2">
+                    all ranks
+                  </Link>
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <Link
+              href="/schedule"
+              className="inline-flex h-10 items-center justify-center rounded-full bg-jade-accent px-3 text-center text-xs font-semibold text-white sm:px-4 sm:text-sm"
+            >
+              Book next seat
+            </Link>
+            <Link
+              href="/schedule?create=1"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-[#102A20]/15 bg-white px-3 text-center text-xs font-semibold sm:px-4 sm:text-sm"
+            >
+              Open table
+            </Link>
+            <Link
+              href="/scan"
+              className="col-span-2 inline-flex h-10 items-center justify-center rounded-full border border-[#102A20]/15 bg-white px-3 text-center text-xs font-semibold sm:col-span-1 sm:px-4 sm:text-sm"
+            >
+              Scan hand
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Active / next up */}
+      <section className="mt-5">
+        {live ? (
+          <Link
+            href={`/session/live?id=${encodeURIComponent(live.id)}`}
+            className="jade-card-accent tap-press flex flex-wrap items-center justify-between gap-3 p-5"
+          >
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Rank · XP curve
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                ● Live now
               </p>
               <h2 className="mt-1 font-serif text-3xl leading-none">
-                LV {progress.level} · {progress.bandTitle}
+                {live.title}
               </h2>
-              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
-                {progress.experienceLevelName} · {progress.bandRange} ·{" "}
-                {progress.xp} XP
+              <p className="mt-2 text-sm text-muted-foreground">
+                {boardLabel(live.boardType)} · seat wind {live.wind}
+              </p>
+            </div>
+            <span className="inline-flex h-11 items-center rounded-full bg-jade-ink px-4 text-sm font-semibold text-white">
+              Resume live table →
+            </span>
+          </Link>
+        ) : nextMeet ? (
+          <Link
+            href="/schedule"
+            className="jade-card tap-press flex flex-wrap items-center justify-between gap-3 p-5"
+          >
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Next booked meet
+              </p>
+              <h2 className="mt-1 font-serif text-3xl leading-none">
+                {nextMeet.title}
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {new Date(nextMeet.startsAt).toLocaleString("en-GB", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                {nextMeet.seatNumber
+                  ? ` · Seat #${nextMeet.seatNumber}`
+                  : ""}{" "}
+                · {nextMeet.location}
+              </p>
+            </div>
+            <span className="inline-flex h-11 items-center rounded-full border border-[#102A20]/15 bg-white px-4 text-sm font-semibold">
+              View schedule →
+            </span>
+          </Link>
+        ) : (
+          <div className="jade-card flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Next up
+              </p>
+              <h2 className="mt-1 font-serif text-3xl leading-none">
+                No seat booked
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Grab the next open club session before it fills.
               </p>
             </div>
             <Link
-              href="/levels"
-              className="font-mono text-[10px] uppercase tracking-[0.14em] underline-offset-2 hover:underline"
+              href="/schedule"
+              className="inline-flex h-11 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white"
             >
-              Full ladder →
+              Browse schedule →
             </Link>
           </div>
-          <div className="mt-5">
-            <div className="mb-2 flex justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.14em]">
-              <span>
-                {progress.level >= 100
-                  ? "Max level"
-                  : `${progress.xpIntoLevel} / ${progress.xpForNextLevel} XP to LV ${progress.level + 1}`}
-              </span>
-              <span>{progress.pctToNext}%</span>
-            </div>
-            <div className="h-3 border-[2px] border-jade-ink bg-parchment">
-              <div
-                className="h-full bg-jade-accent transition-all"
-                style={{ width: `${progress.pctToNext}%` }}
-              />
-            </div>
-            {progress.nextBandTitle && progress.xpToNextBand != null ? (
-              <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                {progress.xpToNextBand} XP to {progress.nextBandTitle}
-              </p>
-            ) : null}
-          </div>
-        </section>
-      ) : loggedIn ? (
-        <section className="jade-card mt-8 p-5">
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            Link a player profile to track pangkat XP
-          </p>
-          <Link
-            href="/me"
-            className="mt-3 inline-flex font-mono text-[11px] uppercase tracking-[0.14em] underline-offset-2 hover:underline"
-          >
-            Complete profile →
-          </Link>
-        </section>
-      ) : null}
+        )}
+      </section>
 
-      <div className="mt-8 grid gap-3 sm:grid-cols-3">
-        <DashLink href="/puzzle" label="Daily WWYD" hint="Vote · Pro coach note" />
-        <DashLink href="/coaching" label="Coaching" hint="Reels · hand audit" />
-        <DashLink href="/schedule" label="Book a table" hint="Early-bird seats" />
+      {/* Quick stats */}
+      <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          label="Season net"
+          value={formatSignedPoints(seasonPoints)}
+          tone={seasonPoints >= 0 ? "good" : "bad"}
+        />
+        <StatCard label="Win rate" value={winRate} />
+        <StatCard label="Games played" value={String(games)} />
+        <StatCard label="Current streak" value={`${streakLabel}`} />
+      </section>
+
+      {/* Daily engagement */}
+      <section className="mt-5 grid gap-4 md:grid-cols-2">
+        <DashboardPuzzleCard />
+        <DashboardBounties />
+      </section>
+
+      {/* Session history */}
+      <div className="mt-8">
+        <SessionHistoryList
+          history={history}
+          accountName={user.name}
+          seeAllHref={
+            user.playerId ? `/players/${user.playerId}/sessions` : undefined
+          }
+        />
       </div>
-
-      <section className="mt-12">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="font-serif text-3xl uppercase">Weekly bounty board</h2>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-              {weekKey || "…"} · auto-checked from finished tables
-            </p>
-          </div>
-        </div>
-
-        <ol className="mt-5 grid gap-4 md:grid-cols-3">
-          {bounties.map((bounty, index) => {
-            const canClaim = bounty.eligible && !bounty.claimed
-            return (
-              <li key={bounty.key} className="jade-card flex flex-col p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  Quest {String(index + 1).padStart(2, "0")} · +{bounty.xp} XP
-                </p>
-                <h3 className="mt-2 font-serif text-2xl leading-none">
-                  {bounty.title}
-                </h3>
-                <p className="mt-3 flex-1 text-sm text-muted-foreground">
-                  {bounty.blurb}
-                </p>
-                <p
-                  className={cn(
-                    "mt-3 font-mono text-[10px] uppercase tracking-[0.12em]",
-                    bounty.eligible || bounty.claimed
-                      ? "text-jade-accent"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {bounty.claimed
-                    ? "Claimed this week"
-                    : bounty.eligible
-                      ? "Eligible · claim XP"
-                      : bounty.reason}
-                </p>
-                <button
-                  type="button"
-                  disabled={!canClaim || pendingKey === bounty.key}
-                  onClick={() => claim(bounty.key)}
-                  className={cn(
-                    "mt-4 inline-flex h-10 w-full items-center justify-center border-[2px] border-jade-ink font-mono text-[10px] uppercase tracking-[0.14em] disabled:opacity-50",
-                    bounty.claimed
-                      ? "bg-jade-accent text-white"
-                      : canClaim
-                        ? "bg-jade-gold text-jade-ink"
-                        : "bg-card",
-                  )}
-                >
-                  {bounty.claimed
-                    ? "Claimed"
-                    : pendingKey === bounty.key
-                      ? "Claiming…"
-                      : canClaim
-                        ? "Claim XP"
-                        : "Locked"}
-                </button>
-              </li>
-            )
-          })}
-        </ol>
-        {error ? (
-          <p className="mt-3 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
-            {error}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="jade-card-accent mt-10 p-5">
-        <h2 className="font-serif text-2xl">Why Pro stays open midweek</h2>
-        <ul className="mt-3 space-y-2 font-mono text-[11px] uppercase tracking-[0.14em]">
-          <li>★ WWYD coach note + shanten ladder every morning</li>
-          <li>★ Strategy clips in Coaching</li>
-          <li>★ Full session archive for hand audits</li>
-        </ul>
-        <Link
-          href="/puzzle"
-          className="scan-cta-accent mt-4 inline-flex h-11 items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
-        >
-          Play today&apos;s puzzle
-        </Link>
-      </section>
     </main>
   )
 }
 
-function DashLink({
-  href,
+function StatCard({
   label,
-  hint,
+  value,
+  tone,
 }: {
-  href: string
   label: string
-  hint: string
+  value: string
+  tone?: "good" | "bad"
 }) {
   return (
-    <Link
-      href={href}
-      className="jade-card block px-4 py-4 transition hover:translate-x-px hover:translate-y-px hover:shadow-none"
-    >
-      <p className="font-serif text-2xl leading-none">{label}</p>
-      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-        {hint}
+    <div className="jade-card px-3 py-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
       </p>
-    </Link>
+      <p
+        className={cn(
+          "mt-1 font-mono text-xl font-semibold",
+          tone === "good" && "text-jade-accent",
+          tone === "bad" && "text-jade-red",
+        )}
+      >
+        {value}
+      </p>
+    </div>
   )
 }

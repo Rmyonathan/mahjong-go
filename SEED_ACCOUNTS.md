@@ -17,7 +17,7 @@ Dev logins created by `npm run db:seed` (`prisma/seed.ts`).
 - **Player tables:** Free host = 3 scans · Pro host = unlimited · Club (admin) = unlimited + appoint captain
 - **Pro member (early-bird + insights):** `sari@jade.local` / `jade123`
 - **Free member (blurred insights · last 3 sessions · blocked early-bird):** `andi@jade.local` / `jade123`
-- **Week-1 payment:** Dynamic QRIS from GoPay static (`lib/qris.ts`) — Pro Rp 29k / booking fee / Scan Pack Rp 15k — + WhatsApp `+6285121341608`; admin flips Set PRO · 30d
+- **Week-1 payment:** Pro/Scan = dynamic QRIS + WA app; **booking meja** = dynamic QRIS (Jade GoPay merchant, nominal dari `feeIdr`) + WA booking **+62 811-7962-211** (only club admin can set seat fee on meets)
 - **Retention:** `/dashboard` bounties · `/puzzle` daily WWYD · `/coaching` videos + hand audit
 - Re-seed anytime with: `npm run db:seed` (wipes and recreates seed data)
 

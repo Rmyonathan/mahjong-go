@@ -23,6 +23,24 @@ export async function PATCH(request: Request, { params }: Params) {
     playerId?: string | null
     /** One-click Set PRO (30 days) / clear Pro. */
     setPro30Days?: boolean
+    /** Add N scans to this user's Free-hosted OPEN/FULL meets. */
+    grantBonusScans?: number
+  }
+
+  if (
+    typeof body.grantBonusScans === "number" &&
+    body.grantBonusScans > 0
+  ) {
+    const amount = Math.floor(body.grantBonusScans)
+    const result = await prisma.meet.updateMany({
+      where: {
+        hostId: id,
+        status: { in: ["OPEN", "FULL"] },
+        scanLimit: { not: null },
+      },
+      data: { scanLimit: { increment: amount } },
+    })
+    return NextResponse.json({ ok: true, updatedMeets: result.count })
   }
 
   const data: {

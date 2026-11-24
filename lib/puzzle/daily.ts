@@ -1,6 +1,16 @@
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
 import type { Tile } from "@/lib/mahjong/types"
 import { analyzeHand } from "@/lib/mahjong/shanten"
+import {
+  GRADE_LABEL,
+  gradeDiscard,
+  handReadyDetail,
+  handReadyLabel,
+  tileRoleInHand,
+  whatHappensNext,
+  whyGrade,
+  type DiscardGrade,
+} from "@/lib/puzzle/coach-explain"
 
 export type DailyPuzzle = {
   id: string
@@ -149,7 +159,7 @@ export const PUZZLE_BANK: Omit<DailyPuzzle, "id">[] = [
     ],
     idealDiscardId: "characters-1",
     coachNote:
-      "Keep the east pair as your eye. Characters 1 and dots 9 are both awkward — dump 1 characters first; 9 dots can still blend into terminal pressure later.",
+      "Keep the east pair as your eye — that pair is what lets the hand finish later. Characters 1 and dots 9 both look awkward, but 1 characters has zero neighbors so it almost never joins a run. Dump it first. Keep 9 dots a little longer; it can still pressure terminals or pair up if another 9 falls. After the cut you stay one clean shape from ready, then you wait on the wall.",
     coachName: "Coach Raka",
   },
   {
@@ -206,13 +216,40 @@ export function tilesFromIds(tileIds: string[]): Tile[] {
     .filter((tile): tile is Tile => Boolean(tile))
 }
 
-/** Pro coaching breakdown using existing shanten engine. */
-export function analyzeWwyd(tileIds: string[]) {
+export type WwydDiscardOption = {
+  discardId: string
+  discardLabel: string
+  /** Internal engine distance — not shown raw in UI. */
+  shantenAfterDiscard: number
+  standardShanten: number
+  grade: DiscardGrade
+  gradeLabel: string
+  readyLabel: string
+  why: string
+  next: string
+  isIdeal: boolean
+}
+
+export type WwydBreakdown = {
+  /** Internal — prefer readyLabel in UI. */
+  shanten: number
+  standardShanten: number
+  readyLabel: string
+  readyDetail: string
+  special: { sevenPairs: number; thirteenOrphans: number }
+  options: WwydDiscardOption[]
+}
+
+/** Pro coaching breakdown — plain-language grades on top of the shanten engine. */
+export function analyzeWwyd(
+  tileIds: string[],
+  idealDiscardId?: string,
+): WwydBreakdown {
   const hand = tilesFromIds(tileIds)
   const base = analyzeHand(hand, hand, null)
   const uniqueIds = [...new Set(hand.map((t) => t.id))]
 
-  const options = uniqueIds
+  const raw = uniqueIds
     .map((discardId) => {
       const idx = hand.findIndex((t) => t.id === discardId)
       if (idx < 0) return null
@@ -226,16 +263,49 @@ export function analyzeWwyd(tileIds: string[]) {
       }
     })
     .filter((row): row is NonNullable<typeof row> => row != null)
+
+  const bestAfter = Math.min(...raw.map((row) => row.shantenAfterDiscard))
+
+  const options: WwydDiscardOption[] = raw
+    .map((row) => {
+      const grade = gradeDiscard({
+        before: base.shanten,
+        after: row.shantenAfterDiscard,
+        bestAfter,
+      })
+      const role = tileRoleInHand(hand, row.discardId)
+      const isIdeal = row.discardId === idealDiscardId
+      return {
+        ...row,
+        grade,
+        gradeLabel: GRADE_LABEL[grade],
+        readyLabel: handReadyLabel(row.shantenAfterDiscard),
+        why: whyGrade({
+          grade,
+          before: base.shanten,
+          after: row.shantenAfterDiscard,
+          bestAfter,
+          discardLabel: row.discardLabel,
+          role,
+          isIdeal,
+        }),
+        next: whatHappensNext(row.shantenAfterDiscard),
+        isIdeal,
+      }
+    })
     .sort(
       (a, b) =>
         a.shantenAfterDiscard - b.shantenAfterDiscard ||
+        Number(b.isIdeal) - Number(a.isIdeal) ||
         a.discardLabel.localeCompare(b.discardLabel),
     )
 
   return {
     shanten: base.shanten,
     standardShanten: base.standardShanten,
+    readyLabel: handReadyLabel(base.shanten),
+    readyDetail: handReadyDetail(base.shanten),
     special: base.special,
-    options: options.slice(0, 6),
+    options,
   }
 }

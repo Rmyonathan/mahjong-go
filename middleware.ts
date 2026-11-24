@@ -20,6 +20,7 @@ const PUBLIC_PREFIXES = [
   "/coaching",
   "/puzzle",
   "/hk",
+  "/learn",
 ]
 
 /** Public APIs guests need for browse pages (mutations still auth-check in-route). */

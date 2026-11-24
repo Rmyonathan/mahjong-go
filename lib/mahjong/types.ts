@@ -148,11 +148,14 @@ export type HandTile = Tile & {
 // ---------------------------------------------------------------------------
 
 /**
- * Varian aturan yang didukung mesin skor.
- * - `hong-kong-old-style` : Hong Kong Old Style (Gaya Lama Hong Kong)
- * - `hokkien`             : Hokkien / gaya jalanan Indo
+ * Varian hitungan meja Jade (Phase 1 — dua preset saja).
+ * - `chicken`  : Chicken Hand — menang 0 Faan diizinkan
+ * - `jade-hk`  : Jade HK Modified — min 1 Faan, catalog resmi §5
  */
-export type RuleVariant = "hong-kong-old-style" | "hokkien";
+export type RuleVariant = "chicken" | "jade-hk";
+
+/** @deprecated Legacy ids — map with rulesetFromDb() */
+export type LegacyRuleVariant = "hong-kong-old-style" | "hokkien";
 
 // ---------------------------------------------------------------------------
 // KONTEKS PERMAINAN (Angin — environment state)

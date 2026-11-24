@@ -65,7 +65,9 @@ export async function GET() {
         ? {
             idealDiscardId: isPro ? puzzle.idealDiscardId : null,
             coachNote: isPro ? puzzle.coachNote : null,
-            breakdown: isPro ? analyzeWwyd(puzzle.tileIds) : null,
+            breakdown: isPro
+              ? analyzeWwyd(puzzle.tileIds, puzzle.idealDiscardId)
+              : null,
           }
         : null,
   })

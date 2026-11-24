@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 
-import { DynamicQris } from "@/components/payment/dynamic-qris"
-import { whatsAppBookingConfirmUrl } from "@/lib/pro-payment"
-import { QRIS_AMOUNT } from "@/lib/qris"
+import { StaticBookingQris } from "@/components/payment/static-booking-qris"
+import {
+  WHATSAPP_BOOKING_DISPLAY,
+  whatsAppBookingConfirmUrl,
+} from "@/lib/pro-payment"
 import {
   boardLabel,
   formatFeeIdr,
@@ -44,16 +46,23 @@ export function BookSeatModal({
   useEffect(() => {
     if (!open) {
       setResult(null)
-      setMethod("QRIS")
+      setMethod("VENUE")
       setError(null)
       setPending(false)
     }
   }, [open])
 
+  useEffect(() => {
+    if (!open || !meet) return
+    if (meet.feeIdr > 0) setMethod("QRIS")
+    else setMethod("VENUE")
+  }, [open, meet])
+
   if (!open || !meet) return null
 
   const nextSeat = meet.confirmedCount + 1
-  const feeIdr = meet.feeIdr > 0 ? meet.feeIdr : QRIS_AMOUNT.BOOKING_DEFAULT
+  const feeIdr = meet.feeIdr > 0 ? meet.feeIdr : 0
+  const qrisOffered = feeIdr > 0
   const waUrl = whatsAppBookingConfirmUrl({
     accountName,
     meetTitle: meet.title,
@@ -158,7 +167,9 @@ export function BookSeatModal({
                 <div className="mt-2 flex flex-col gap-2">
                   {(
                     [
-                      ["QRIS", "Pay via QRIS (amount locked)"],
+                      ...(qrisOffered
+                        ? ([["QRIS", "Pay via QRIS Jade"]] as const)
+                        : []),
                       ["VENUE", "Pay at venue"],
                     ] as const
                   ).map(([id, label]) => (
@@ -179,20 +190,16 @@ export function BookSeatModal({
                 </div>
               </fieldset>
 
-              {method === "QRIS" ? (
+              {method === "QRIS" && qrisOffered ? (
                 <>
-                  <DynamicQris
-                    amount={feeIdr}
-                    size={180}
-                    label={`Dynamic QRIS · seat fee`}
-                  />
+                  <StaticBookingQris amountIdr={feeIdr} size={200} />
                   <a
                     href={waUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex h-10 w-full items-center justify-center rounded-full border border-[#102A20]/15 bg-white font-mono text-[11px] uppercase tracking-[0.16em]"
                   >
-                    Confirm pay on WhatsApp
+                    Konfirmasi via {WHATSAPP_BOOKING_DISPLAY}
                   </a>
                 </>
               ) : null}

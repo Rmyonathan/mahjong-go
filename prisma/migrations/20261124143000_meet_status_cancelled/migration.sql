@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "MeetStatus" ADD VALUE IF NOT EXISTS 'CANCELLED';

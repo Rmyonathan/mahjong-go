@@ -6,6 +6,7 @@ import { FormSquares } from "@/components/jade/form-squares"
 import { GameLog } from "@/components/jade/game-log"
 import { ScoreRaceChart } from "@/components/jade/score-race-chart"
 import { SessionActions } from "@/components/jade/session-actions"
+import { FinishedSessionNewspaper } from "@/components/share/finished-session-share"
 import {
   getActiveSeason,
   getDbSessionDetail,
@@ -18,6 +19,7 @@ import {
   type SessionDetail,
 } from "@/lib/mock/jade-board"
 import type { JadePlayer } from "@/lib/mock/jade-data"
+import { sessionDetailToLiveShare } from "@/lib/share/from-session-detail"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -129,6 +131,8 @@ function SessionDetailView({
       memberSince: "",
     }
 
+  const liveShare = sessionDetailToLiveShare(session, players)
+
   const started = new Date(session.startedAt)
   const ended = new Date(session.endedAt)
   const whenLabel = new Intl.DateTimeFormat("en-GB", {
@@ -183,7 +187,10 @@ function SessionDetailView({
             {session.district ? `, ${session.district}` : ""}
           </p>
         </div>
-        <SessionActions title={session.title} />
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <SessionActions title={session.title} />
+          <FinishedSessionNewspaper session={liveShare} />
+        </div>
       </div>
 
       {/* Summary strip — scrolls on narrow phones */}
@@ -287,7 +294,7 @@ function SessionDetailView({
       </div>
 
       <div className="mt-7 grid items-start gap-5 sm:mt-8 sm:gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        <GameLog session={session} />
+        <GameLog session={session} liveShare={liveShare} />
 
         <aside className="flex flex-col gap-3 sm:gap-4" aria-label="Highlights">
           <div className="jade-card p-3.5 sm:p-4">

@@ -7,6 +7,10 @@
 export const STATIC_QRIS =
   "00020101021126610014COM.GO-JEK.WWW01189360091438039823980210G8039823980303UMI51440014ID.CO.QRIS.WWW0215ID10266439357560303UMI5204573253033605802ID5916Swakarsa Digital6014BANDAR LAMPUNG61053512862070703A01630405FA"
 
+/** GoPay Merchant · Jade mahjong (booking meja) — from public/QRIS_JADE.jpeg */
+export const BOOKING_STATIC_QRIS =
+  "00020101021126610014COM.GO-JEK.WWW01189360091433879558720210G3879558720303UMI51440014ID.CO.QRIS.WWW0215ID10266466873880303UMI5204594553033605802ID5912Jade mahjong6014BANDAR LAMPUNG61053522362070703A01630492F6"
+
 /** Catalog amounts (IDR, whole rupiah). */
 export const QRIS_AMOUNT = {
   PRO: 29_000,
@@ -71,6 +75,11 @@ export function generateDynamicQris(
 
   // 4. Recalculate CRC16 over payload including 6304
   return payloadWithoutCrc + crc16(payloadWithoutCrc)
+}
+
+/** Dynamic QRIS for table booking — nominal terkunci di scan. */
+export function generateBookingDynamicQris(amount: number) {
+  return generateDynamicQris(amount, BOOKING_STATIC_QRIS)
 }
 
 export function formatQrisIdr(amount: number) {

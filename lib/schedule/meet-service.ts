@@ -98,8 +98,25 @@ export function syncMeetStatus(
   maxSeats: number,
   current: MeetStatus,
 ): MeetStatus {
-  if (current === "COMPLETED") return "COMPLETED"
+  if (current === "COMPLETED" || current === "CANCELLED") return current
   return confirmedCount >= maxSeats ? "FULL" : "OPEN"
+}
+
+/** Lowest free seat after host releases / swaps (1…maxSeats). */
+export async function nextAvailableSeatNumber(
+  meetId: string,
+  maxSeats: number,
+  tx: Prisma.TransactionClient = prisma,
+): Promise<number> {
+  const taken = await tx.booking.findMany({
+    where: { meetId, status: "CONFIRMED", seatNumber: { not: null } },
+    select: { seatNumber: true },
+  })
+  const used = new Set(taken.map((row) => row.seatNumber as number))
+  for (let seat = 1; seat <= maxSeats; seat++) {
+    if (!used.has(seat)) return seat
+  }
+  throw new Error("FULL")
 }
 
 function displayName(user: {
@@ -150,6 +167,8 @@ export function serializeMeet(
     endsAt: meet.endsAt.toISOString(),
     location: meet.location,
     boardType: meet.boardType,
+    scoringRuleset:
+      meet.scoringRuleset === "CHICKEN" ? "CHICKEN" : "JADE_HK",
     maxSeats: meet.maxSeats,
     tables: meet.tables,
     feeIdr: meet.feeIdr,
@@ -312,15 +331,39 @@ export async function listUpcomingMeets(
     })
   }
 
-  const meets = await prisma.meet.findMany({
-    where: {
-      status: { in: ["OPEN", "FULL"] },
-      startsAt: { gte: startOfTodayJakarta() },
-      ...(andFilters.length ? { AND: andFilters } : {}),
-    },
-    include: meetInclude,
-    orderBy: { startsAt: "asc" },
-  })
+  const visibilityWhere: Prisma.MeetWhereInput = andFilters.length
+    ? { AND: andFilters }
+    : {}
+  const today = startOfTodayJakarta()
+
+  const [upcoming, past] = await Promise.all([
+    prisma.meet.findMany({
+      where: {
+        status: { in: ["OPEN", "FULL"] },
+        startsAt: { gte: today },
+        ...visibilityWhere,
+      },
+      include: meetInclude,
+      orderBy: { startsAt: "asc" },
+    }),
+    // Past / completed — last ~21 days for schedule archive section
+    // Explicit allow-list so CANCELLED never surfaces on the schedule
+    prisma.meet.findMany({
+      where: {
+        status: { in: ["OPEN", "FULL", "COMPLETED"] },
+        startsAt: {
+          gte: new Date(today.getTime() - 21 * 24 * 60 * 60 * 1000),
+        },
+        OR: [{ startsAt: { lt: today } }, { status: "COMPLETED" }],
+        ...visibilityWhere,
+      },
+      include: meetInclude,
+      orderBy: { startsAt: "desc" },
+      take: 24,
+    }),
+  ])
+
+  const meets = [...upcoming, ...past]
   const playerIds = meets.flatMap((meet) =>
     meet.bookings
       .map((booking) => booking.user.player?.id)
@@ -343,12 +386,14 @@ export async function userCanLaunchMeetLive(options: {
   role: string
   meetId: string
 }) {
-  if (options.role === "ADMIN") return { ok: true as const }
   const meet = await prisma.meet.findUnique({
     where: { id: options.meetId },
-    select: { hostId: true, captainId: true },
+    select: { hostId: true, captainId: true, status: true },
   })
-  if (!meet) return { ok: false as const, reason: "Meet not found" }
+  if (!meet || meet.status === "CANCELLED") {
+    return { ok: false as const, reason: "Meet not found" }
+  }
+  if (options.role === "ADMIN") return { ok: true as const }
   if (meet.hostId === options.userId || meet.captainId === options.userId) {
     return { ok: true as const }
   }
@@ -406,6 +451,8 @@ export type CreateMeetBody = {
   endsAt: string
   location?: string
   boardType: MeetBoardType
+  /** CHICKEN | JADE_HK — hitungan for live tables from this meet */
+  scoringRuleset?: "CHICKEN" | "JADE_HK"
   maxSeats?: number
   tables?: number
   feeIdr?: number

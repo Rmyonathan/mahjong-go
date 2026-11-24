@@ -4,15 +4,15 @@ import { useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 
 import { GameContextControls } from "@/components/mahjong/game-context-controls"
+import { RulesetPicker } from "@/components/mahjong/ruleset-picker"
 import { ScanCameraViewfinder } from "@/components/scan/scan-camera-viewfinder"
 import { ScannedHandEditor } from "@/components/scan/scanned-hand-editor"
 import { calculateHandScore } from "@/lib/mahjong/engine"
-import { getHkosPayout } from "@/lib/mahjong/payout"
+import { formatJadeMiles, getJadePayout } from "@/lib/mahjong/payout"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
-import type { GameContext, Tile } from "@/lib/mahjong/types"
+import type { GameContext, RuleVariant, Tile } from "@/lib/mahjong/types"
 import { scanHandFromFile } from "@/lib/scan/client"
 import {
-  POINT_UNIT,
   computePayoutDeltas,
   type LiveSeat,
   type LiveWind,
@@ -62,11 +62,14 @@ export function CameraScanModal({
   seats,
   onClose,
   onConfirm,
+  ruleset: lockedRuleset,
 }: {
   open: boolean
   seats: LiveSeat[]
   onClose: () => void
   onConfirm: (hand: ConfirmedScanHand) => void
+  /** Table hitungan from meet/session — locked for the live table */
+  ruleset?: RuleVariant
 }) {
   const [step, setStep] = useState<Step>("viewfinder")
   const [error, setError] = useState<string | null>(null)
@@ -76,6 +79,9 @@ export function CameraScanModal({
   const [winnerSeatIndex, setWinnerSeatIndex] = useState(0)
   const [method, setMethod] = useState<WinMethod>("self-draw")
   const [dealtBySeatIndex, setDealtBySeatIndex] = useState<number | null>(1)
+  const [ruleset, setRuleset] = useState<RuleVariant>(
+    lockedRuleset ?? "jade-hk",
+  )
   const [gameContext, setGameContext] = useState<GameContext>({
     seatWind: "East",
     roundWind: "East",
@@ -90,12 +96,13 @@ export function CameraScanModal({
     setWinnerSeatIndex(0)
     setMethod("self-draw")
     setDealtBySeatIndex(seats.length > 1 ? 1 : null)
+    setRuleset(lockedRuleset ?? "jade-hk")
     const wind = seats[0]?.wind ?? "east"
     setGameContext({
       seatWind: windToSeatLabel(wind),
       roundWind: "East",
     })
-  }, [open, seats])
+  }, [open, seats, lockedRuleset])
 
   useEffect(() => {
     const wind = seats[winnerSeatIndex]?.wind
@@ -109,19 +116,20 @@ export function CameraScanModal({
   const { main, flowers } = useMemo(() => splitTiles(tileIds), [tileIds])
 
   const score = useMemo(
-    () => calculateHandScore(main, flowers, gameContext),
-    [main, flowers, gameContext],
+    () =>
+      calculateHandScore(main, flowers, gameContext, { variant: ruleset }),
+    [main, flowers, gameContext, ruleset],
   )
 
   const payout = useMemo(
-    () => getHkosPayout(score.totalFan),
+    () => getJadePayout(score.totalFan),
     [score.totalFan],
   )
 
   const winnerPoints = useMemo(() => {
-    const base =
-      method === "self-draw" ? payout.totalTsumo : payout.perOpponentRon
-    return base * POINT_UNIT
+    return method === "self-draw"
+      ? payout.winnerSelfDraw
+      : payout.winnerDiscard
   }, [method, payout])
 
   const deltas = useMemo(
@@ -131,9 +139,9 @@ export function CameraScanModal({
         winnerSeatIndex,
         method,
         dealtBySeatIndex: method === "discard" ? dealtBySeatIndex : null,
-        winnerPoints,
+        totalFan: score.totalFan,
       }),
-    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, winnerPoints],
+    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, score.totalFan],
   )
 
   async function runScan(file: File) {
@@ -157,8 +165,8 @@ export function CameraScanModal({
       setError("Need 14 main (non-bonus) tiles to log a win.")
       return
     }
-    if (!score.isValidHand && score.totalFan <= 0) {
-      setError(score.messages[0] ?? "Hand is not a valid HKOS win.")
+    if (!score.isValidHand) {
+      setError(score.messages[0] ?? "Hand is not a valid win under table rules.")
       return
     }
     const winningTileId = main[main.length - 1]?.id ?? tileIds[tileIds.length - 1] ?? ""
@@ -283,6 +291,21 @@ export function CameraScanModal({
                 context={gameContext}
                 onChange={setGameContext}
               />
+
+              <RulesetPicker
+                value={ruleset}
+                onChange={setRuleset}
+                disabled={Boolean(lockedRuleset)}
+                compact
+              />
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                {score.totalFan} Faan = Base {formatJadeMiles(payout.basePoints)}{" "}
+                → winner{" "}
+                {formatJadeMiles(winnerPoints)}
+                {method === "discard"
+                  ? ` (penyuap −${formatJadeMiles(payout.discarderPays)})`
+                  : ` (tiap lawan −${formatJadeMiles(payout.eachPaysSelfDraw)})`}
+              </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block">

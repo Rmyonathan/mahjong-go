@@ -37,7 +37,7 @@ export async function POST(request: Request, { params }: Params) {
   )
 
   const meet = await prisma.meet.findUnique({ where: { id: meetId } })
-  if (!meet || meet.status === "COMPLETED") {
+  if (!meet || meet.status === "COMPLETED" || meet.status === "CANCELLED") {
     return NextResponse.json({ error: "Meet not found" }, { status: 404 })
   }
 

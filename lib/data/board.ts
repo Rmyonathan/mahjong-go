@@ -1,7 +1,8 @@
 import type { BoardTier, FormResult, MeetBoardType } from "@prisma/client"
 
 import { prisma } from "@/lib/db"
-import { skillForPoints, type JadePlayer } from "@/lib/mock/jade-data"
+import { type JadePlayer } from "@/lib/mock/jade-data"
+import { eloStampFromRating } from "@/lib/mock/jade-levels"
 import {
   ACTIVE_SEASON,
   BOARD_STANDINGS,
@@ -60,12 +61,18 @@ export async function getActiveSeason(): Promise<SeasonMeta | null> {
 
   const season = await prisma.season.findFirst({ where: { isActive: true } })
   if (!season) return ACTIVE_SEASON
+
+  const [sessionCount, handCount] = await Promise.all([
+    prisma.gameSession.count({ where: { status: "FINISHED" } }),
+    prisma.handRecord.count({ where: { session: { status: "FINISHED" } } }),
+  ])
+
   return {
     id: season.id,
     label: season.label,
     rangeLabel: season.rangeLabel,
-    sessionsPlayed: season.sessionsPlayed,
-    gamesPlayed: season.gamesPlayed,
+    sessionsPlayed: sessionCount,
+    gamesPlayed: handCount,
     hoursAtTable: season.hoursAtTable,
   }
 }
@@ -76,22 +83,60 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
 
   const season = await prisma.season.findFirst({ where: { isActive: true } })
   if (!season) return SEASON_KPI
+
+  const [sessionCount, handCount, biggest, topStanding] = await Promise.all([
+    prisma.gameSession.count({ where: { status: "FINISHED" } }),
+    prisma.handRecord.count({ where: { session: { status: "FINISHED" } } }),
+    prisma.handRecord.findFirst({
+      where: {
+        session: { status: "FINISHED" },
+        points: { gt: 0 },
+      },
+      orderBy: { points: "desc" },
+      include: {
+        winnerSeat: {
+          include: { user: { select: { playerId: true } } },
+        },
+      },
+    }),
+    prisma.boardStanding.findFirst({
+      where: { seasonId: season.id },
+      orderBy: [{ streak: "desc" }, { points: "desc" }],
+    }),
+  ])
+
+  const durationMs = await prisma.gameSession.findMany({
+    where: { status: "FINISHED", endedAt: { not: null } },
+    select: { startedAt: true, endedAt: true },
+  })
+  const hoursAtTable =
+    Math.round(
+      (durationMs.reduce((sum, session) => {
+        if (!session.endedAt) return sum
+        return sum + (session.endedAt.getTime() - session.startedAt.getTime())
+      }, 0) /
+        3_600_000) *
+        10,
+    ) / 10
+
   return {
-    sessionsPlayed: season.sessionsPlayed,
-    gamesPlayed: season.gamesPlayed,
-    hoursAtTable: season.hoursAtTable,
+    sessionsPlayed: sessionCount,
+    gamesPlayed: handCount,
+    hoursAtTable: hoursAtTable || season.hoursAtTable,
     biggestHand: {
-      playerId: season.biggestHandPlayerId,
-      points: season.biggestHandPts,
-      combo: season.biggestHandCombo,
+      playerId:
+        biggest?.winnerSeat?.user?.playerId ??
+        season.biggestHandPlayerId,
+      points: biggest?.points ?? season.biggestHandPts,
+      combo: season.biggestHandCombo || "Winning hand",
     },
     topCombo: {
       name: season.topComboName,
       count: season.topComboCount,
     },
     hotStreak: {
-      playerId: season.hotStreakPlayerId,
-      streak: season.hotStreak,
+      playerId: topStanding?.playerId ?? season.hotStreakPlayerId,
+      streak: topStanding?.streak ?? season.hotStreak,
     },
   }
 }
@@ -116,12 +161,37 @@ export async function getDbBoardStandings(
   const season = await prisma.season.findFirst({ where: { isActive: true } })
   if (!season) return getBoardStandings(board === "all" ? "all" : board)
 
+  // Live mode: standings come only from finished GameSessions (never seed mock).
+  const liveSeats = await prisma.sessionSeat.findMany({
+    where: {
+      userId: { not: null },
+      session: { status: "FINISHED" },
+    },
+    select: { user: { select: { playerId: true } } },
+  })
+  const expectedPlayers = new Set(
+    liveSeats
+      .map((row) => row.user?.playerId)
+      .filter((id): id is string => Boolean(id)),
+  )
+  const standingCount = await prisma.boardStanding.count({
+    where: { seasonId: season.id },
+  })
+  if (standingCount !== expectedPlayers.size) {
+    const { rebuildStandingsFromFinishedSessions } = await import(
+      "@/lib/data/rebuild-standings"
+    )
+    await rebuildStandingsFromFinishedSessions(season.id)
+  }
+
   const { isProMembership } = await import("@/lib/membership")
 
   const rows = await prisma.boardStanding.findMany({
     where: {
       seasonId: season.id,
       ...(board === "all" ? {} : { board }),
+      // Only people who actually sat a finished table
+      playerId: { in: [...expectedPlayers] },
     },
     include: {
       player: {
@@ -139,8 +209,9 @@ export async function getDbBoardStandings(
     orderBy: [{ points: "desc" }, { rank: "asc" }],
   })
 
+  // Empty board filter is fine — do NOT fall back to seed mock once live.
   if (rows.length === 0) {
-    return getBoardStandings(board === "all" ? "all" : board)
+    return []
   }
 
   const { experienceFromXp, getXpProgress } = await import("@/lib/xp/progression")
@@ -169,7 +240,7 @@ export async function getDbBoardStandings(
       selfDraw: row.selfDraw,
       discardWins: row.discardWins,
       player,
-      skillTier: skillForPoints(row.points),
+      skillTier: eloStampFromRating(row.player.skillRating),
       experienceLevel,
       isPro: row.player.user ? isProMembership(row.player.user) : false,
     }
@@ -315,6 +386,8 @@ export async function getDbSessionDetail(
       tileIds: tiles.tileIds ?? [],
       winningTileId: tiles.winningTileId ?? "",
       bonusTileIds: [] as string[],
+      points: hand.points,
+      isDraw: hand.winMethod === "DRAW" || winnerIndex < 0,
       deltas: Object.fromEntries(
         playerIds.map((playerId, index) => [playerId, deltasArr[index] ?? 0]),
       ),

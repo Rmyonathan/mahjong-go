@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import {
   makeCheckInCode,
+  nextAvailableSeatNumber,
   syncMeetStatus,
 } from "@/lib/schedule/meet-service"
 
@@ -141,7 +142,11 @@ export async function POST(request: Request, { params }: Params) {
         throw new Error("FULL")
       }
 
-      const seatNumber = confirmedCount + 1
+      const seatNumber = await nextAvailableSeatNumber(
+        meetId,
+        meet.maxSeats,
+        tx,
+      )
       const next = await tx.booking.update({
         where: { id: booking.id },
         data: {

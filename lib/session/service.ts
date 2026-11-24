@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client"
 
 import { prisma } from "@/lib/db"
+import { resolveLiveSessionDuration } from "@/lib/membership"
 import type { FormResult } from "@/lib/mock/jade-board"
 import {
   computePayoutDeltas,
@@ -68,6 +69,8 @@ export type CreateSessionInput = {
   seats: CreateSessionSeatInput[]
   meetId?: string | null
   captainUserId: string
+  /** Override; otherwise copied from meet or defaults to JADE_HK */
+  scoringRuleset?: "CHICKEN" | "JADE_HK"
 }
 
 export type LogHandInput = {
@@ -86,12 +89,25 @@ type SeatWithUser = Prisma.SessionSeatGetPayload<{
   include: { user: { include: { player: true } } }
 }>
 
+const meetHostSelect = {
+  id: true,
+  role: true,
+  membershipTier: true,
+  proExpiresAt: true,
+} satisfies Prisma.UserSelect
+
+const sessionFullInclude = {
+  seats: {
+    include: { user: { include: { player: true } } },
+    orderBy: { seatOrder: "asc" as const },
+  },
+  hands: { orderBy: { handNumber: "asc" as const } },
+  captain: true,
+  meet: { include: { host: { select: meetHostSelect } } },
+} satisfies Prisma.GameSessionInclude
+
 type SessionFull = Prisma.GameSessionGetPayload<{
-  include: {
-    seats: { include: { user: { include: { player: true } } } }
-    hands: true
-    captain: true
-  }
+  include: typeof sessionFullInclude
 }>
 
 function displayName(seat: SeatWithUser) {
@@ -175,38 +191,39 @@ export async function createGameSession(input: CreateSessionInput) {
     }
   })
 
+  let scoringRuleset: "CHICKEN" | "JADE_HK" =
+    input.scoringRuleset ?? "JADE_HK"
+  if (!input.scoringRuleset && input.meetId) {
+    const meet = await prisma.meet.findUnique({
+      where: { id: input.meetId },
+      select: { scoringRuleset: true },
+    })
+    if (meet?.scoringRuleset === "CHICKEN" || meet?.scoringRuleset === "JADE_HK") {
+      scoringRuleset = meet.scoringRuleset
+    }
+  }
+
   return prisma.gameSession.create({
     data: {
       title: input.title.trim() || "Jade Table",
       boardType: BOARD_TO_DB[input.board],
+      scoringRuleset,
       status: "LIVE",
       meetId: input.meetId ?? null,
       captainUserId: input.captainUserId,
       seats: { create: seatRows },
     },
-    include: {
-      seats: {
-        include: { user: { include: { player: true } } },
-        orderBy: { seatOrder: "asc" },
-      },
-      hands: { orderBy: { handNumber: "asc" } },
-      captain: true,
-    },
+    include: sessionFullInclude,
   })
 }
 
 export async function getGameSession(id: string) {
-  return prisma.gameSession.findUnique({
+  const session = await prisma.gameSession.findUnique({
     where: { id },
-    include: {
-      seats: {
-        include: { user: { include: { player: true } } },
-        orderBy: { seatOrder: "asc" },
-      },
-      hands: { orderBy: { handNumber: "asc" } },
-      captain: true,
-    },
+    include: sessionFullInclude,
   })
+  if (!session) return null
+  return ensureLiveSessionNotExpired(session)
 }
 
 export function toLiveSession(session: SessionFull): LiveSession {
@@ -300,6 +317,8 @@ export function toLiveSession(session: SessionFull): LiveSession {
     id: session.id,
     title: session.title,
     board: BOARD_FROM_DB[session.boardType],
+    scoringRuleset:
+      session.scoringRuleset === "CHICKEN" ? "chicken" : "jade-hk",
     seatCount: (seatsOrdered.length === 3 ? 3 : 4) as 3 | 4,
     seats: liveSeats,
     hands: [...liveHands].reverse(),
@@ -312,7 +331,37 @@ export function toLiveSession(session: SessionFull): LiveSession {
   }
 }
 
+export function liveDurationForSession(session: {
+  startedAt: Date
+  captain: {
+    role: string
+    membershipTier: string
+    proExpiresAt: Date | null
+  }
+  meet?: {
+    host: {
+      role: string
+      membershipTier: string
+      proExpiresAt: Date | null
+    } | null
+  } | null
+}) {
+  const duration = resolveLiveSessionDuration({
+    captain: session.captain,
+    meetHost: session.meet?.host ?? null,
+  })
+  const expiresAt =
+    duration.maxMs == null
+      ? null
+      : new Date(session.startedAt.getTime() + duration.maxMs)
+  return {
+    ...duration,
+    expiresAt,
+  }
+}
+
 export function serializeSession(session: SessionFull) {
+  const duration = liveDurationForSession(session)
   return {
     ...toLiveSession(session),
     captainUserId: session.captainUserId,
@@ -320,6 +369,9 @@ export function serializeSession(session: SessionFull) {
     meetId: session.meetId,
     boardType: session.boardType,
     dbStatus: session.status as SessionStatus,
+    durationTier: duration.tier,
+    maxHours: duration.maxHours,
+    expiresAt: duration.expiresAt?.toISOString() ?? null,
     seatsMeta: session.seats
       .slice()
       .sort((a, b) => a.seatOrder - b.seatOrder)
@@ -335,6 +387,16 @@ export function serializeSession(session: SessionFull) {
         dealtInCount: seat.dealtInCount,
       })),
   }
+}
+
+/** Finish LIVE tables that outlived Free/Pro duration. Club = never. */
+export async function ensureLiveSessionNotExpired(
+  session: SessionFull,
+): Promise<SessionFull> {
+  if (session.status !== "LIVE") return session
+  const { expiresAt } = liveDurationForSession(session)
+  if (!expiresAt || expiresAt.getTime() > Date.now()) return session
+  return (await finishGameSession(session.id)) as SessionFull
 }
 
 export async function logHand(sessionId: string, input: LogHandInput) {
@@ -435,27 +497,11 @@ function expectedScore(rating: number, opponentAvg: number) {
   return 1 / (1 + 10 ** ((opponentAvg - rating) / 400))
 }
 
-const sessionFullInclude = {
-  seats: {
-    include: { user: { include: { player: true } } },
-    orderBy: { seatOrder: "asc" as const },
-  },
-  hands: { orderBy: { handNumber: "asc" as const } },
-  captain: true,
-} satisfies Prisma.GameSessionInclude
-
 export async function finishGameSession(sessionId: string) {
   return prisma.$transaction(async (tx) => {
     const session = await tx.gameSession.findUnique({
       where: { id: sessionId },
-      include: {
-        seats: {
-          include: { user: { include: { player: true } } },
-          orderBy: { seatOrder: "asc" },
-        },
-        hands: true,
-        captain: true,
-      },
+      include: sessionFullInclude,
     })
     if (!session) throw new Error("Session not found")
     if (session.status === "FINISHED") {
@@ -517,93 +563,38 @@ export async function finishGameSession(sessionId: string) {
 
     const season = await tx.season.findFirst({ where: { isActive: true } })
     if (season) {
-      const board = boardTierFromMeet(session.boardType)
-      for (const seat of ranked) {
-        const playerId = seat.user?.playerId
-        if (!playerId) continue
-
-        const existing = await tx.boardStanding.findUnique({
-          where: {
-            seasonId_playerId: { seasonId: season.id, playerId },
-          },
-        })
-
-        const formEntry: FormResult =
-          seat.netPoints > 0 ? "W" : seat.netPoints < 0 ? "L" : "D"
-        const discardWins = Math.max(0, seat.wins - seat.selfDraws)
-
-        if (!existing) {
-          await tx.boardStanding.create({
-            data: {
-              seasonId: season.id,
-              playerId,
-              rank: 999,
-              board,
-              points: Math.max(0, seat.netPoints),
-              wins: seat.wins,
-              games: 1,
-              winRate: seat.wins > 0 ? 1 : 0,
-              ptsPerWin: seat.wins > 0 ? Math.max(0, seat.netPoints) : 0,
-              bonus: 0,
-              pen: 0,
-              biggestHand: 0,
-              form: [formEntry],
-              streak: formEntry === "W" ? 1 : 0,
-              selfDraw: seat.selfDraws,
-              discardWins,
-            },
-          })
-        } else {
-          const games = existing.games + 1
-          const wins = existing.wins + seat.wins
-          const points = existing.points + seat.netPoints
-          const form = [...existing.form, formEntry].slice(-8) as FormResult[]
-          await tx.boardStanding.update({
-            where: { id: existing.id },
-            data: {
-              points,
-              wins,
-              games,
-              winRate: games > 0 ? wins / Math.max(games, 1) : 0,
-              ptsPerWin: wins > 0 ? Math.round(points / wins) : 0,
-              form,
-              streak:
-                formEntry === "W"
-                  ? existing.streak > 0
-                    ? existing.streak + 1
-                    : 1
-                  : 0,
-              selfDraw: existing.selfDraw + seat.selfDraws,
-              discardWins: existing.discardWins + discardWins,
-            },
-          })
-        }
-      }
-
-      const standings = await tx.boardStanding.findMany({
-        where: { seasonId: season.id, board },
-        orderBy: [{ points: "desc" }, { wins: "desc" }],
+      const finishedCount = await tx.gameSession.count({
+        where: { status: "FINISHED" },
       })
-      for (let i = 0; i < standings.length; i++) {
-        await tx.boardStanding.update({
-          where: { id: standings[i].id },
-          data: { rank: i + 1 },
-        })
-      }
-
+      const handsPlayed = await tx.handRecord.count({
+        where: { session: { status: "FINISHED" } },
+      })
       await tx.season.update({
         where: { id: season.id },
         data: {
-          sessionsPlayed: { increment: 1 },
-          gamesPlayed: { increment: session.hands.length },
+          sessionsPlayed: finishedCount,
+          gamesPlayed: handsPlayed,
         },
       })
     }
 
-    return tx.gameSession.findUniqueOrThrow({
+    const finished = await tx.gameSession.findUniqueOrThrow({
       where: { id: sessionId },
       include: sessionFullInclude,
     })
+
+    return finished
+  }).then(async (finished) => {
+    // Rebuild outside the finish TX so standings always match finished seats
+    // (seed demo rows are replaced once real tables exist).
+    const season = await prisma.season.findFirst({ where: { isActive: true } })
+    if (season) {
+      const { rebuildStandingsFromFinishedSessions } = await import(
+        "@/lib/data/rebuild-standings"
+      )
+      await rebuildStandingsFromFinishedSessions(season.id)
+    }
+    return finished
   })
 }
 
@@ -625,30 +616,24 @@ export async function listLiveSessionsForUser(userId: string, isAdmin = false) {
             ],
           }),
     },
-    include: {
-      seats: {
-        include: { user: { include: { player: true } } },
-        orderBy: { seatOrder: "asc" },
-      },
-      hands: { orderBy: { handNumber: "asc" } },
-      captain: true,
-    },
+    include: sessionFullInclude,
     orderBy: { startedAt: "desc" },
   })
-  return sessions
+  const kept: SessionFull[] = []
+  for (const session of sessions) {
+    const next = await ensureLiveSessionNotExpired(session)
+    if (next.status === "LIVE") kept.push(next)
+  }
+  return kept
 }
 
 export async function findLiveSessionByMeetId(meetId: string) {
-  return prisma.gameSession.findFirst({
+  const session = await prisma.gameSession.findFirst({
     where: { meetId, status: "LIVE" },
-    include: {
-      seats: {
-        include: { user: { include: { player: true } } },
-        orderBy: { seatOrder: "asc" },
-      },
-      hands: { orderBy: { handNumber: "asc" } },
-      captain: true,
-    },
+    include: sessionFullInclude,
     orderBy: { startedAt: "desc" },
   })
+  if (!session) return null
+  const next = await ensureLiveSessionNotExpired(session)
+  return next.status === "LIVE" ? next : null
 }

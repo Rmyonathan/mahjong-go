@@ -20,6 +20,7 @@ import type {
 import { WIND_TO_SEAT } from "./types";
 import { detectNineGatesSuit } from "./nine-gates";
 import { isDragonSuitWin } from "./dragon-suit";
+import { minFanForRuleset, rulesetFromDb } from "./rulesets";
 
 /** Ambang batas Fan untuk dianggap "Limit Hand" (Tangan Batas). */
 const LIMIT_FAN = 10;
@@ -44,8 +45,10 @@ export interface ScoreResult {
   patterns: ScorePattern[];
   /** Varian aturan yang dipakai. */
   variant: RuleVariant;
-  /** Apakah tangan membentuk struktur menang yang sah. */
+  /** Apakah tangan sah untuk bayar (termasuk min Faan hitungan). */
   isValidHand: boolean;
+  /** Bentuk 4 set + pair (atau pola limit) — tanpa cek min Faan. */
+  hasValidStructure: boolean;
   /** Apakah tangan mencapai status Limit Hand (>= 10 Fan dari satu pola). */
   isLimitHand: boolean;
   /** Pesan informatif untuk pengguna (termasuk rincian struktur). */
@@ -352,7 +355,9 @@ export function calculateHandScore(
   context: GameContext,
   options: ScoreOptions = {},
 ): ScoreResult {
-  const variant: RuleVariant = options.variant ?? "hong-kong-old-style"
+  const variant: RuleVariant = rulesetFromDb(options.variant ?? "jade-hk")
+  /** Chicken Hand: min 0 Faan; hanya bonus rumah (Kong, Double Chi) + Bunga — tanpa pola HK. */
+  const useHkosFaan = variant !== "chicken"
   const messages: string[] = []
 
   // Pola dipisah dua kelompok agar "Limit Hand" bisa meniadakan komponen kecil,
@@ -361,6 +366,7 @@ export function calculateHandScore(
   const handPatterns: ScorePattern[] = []
 
   const seat = WIND_TO_SEAT[context.seatWind]
+  const roundSeat = WIND_TO_SEAT[context.roundWind]
 
   // -------------------------------------------------------------------------
   // Langkah 1: Bunga/Musim SUDAH terpisah pada `flowerHand`; `mainHand` hanya
@@ -369,94 +375,71 @@ export function calculateHandScore(
   const bonusTiles = flowerHand.filter((t) => t.category === "bonus")
   const standardTiles = mainHand.filter((t) => t.category !== "bonus")
   const stdCounts = countById(standardTiles)
-  const flowerCounts = countById(bonusTiles)
 
   // -------------------------------------------------------------------------
-  // Ubin Bunga & Musim (dinilai terpisah — tidak masuk set standar)
+  // Ubin Bunga & Musim — Jade HK §5 (Bunga Sendiri / Bunga Meja saja)
   // -------------------------------------------------------------------------
-  if (bonusTiles.length === 0) {
-    flowerPatterns.push({
-      key: "no-flowers",
-      name: "Tanpa Bunga",
-      fan: 1,
-      description: "Tangan tidak memiliki ubin Bunga maupun Musim.",
-    })
-  }
-
   for (const tile of bonusTiles) {
     if (tile.category !== "bonus") continue
     if (tile.seat === seat) {
       flowerPatterns.push({
         key: `own-bonus-${tile.id}`,
-        name: `${tile.label} (Sendiri)`,
+        name: `${tile.label} (Bunga Sendiri)`,
         fan: 1,
-        description: `Cocok dengan kursi pemain (${WIND_LABEL_ID[context.seatWind]}).`,
+        description: `Bunga/Musim cocok Angin Kursi (${WIND_LABEL_ID[context.seatWind]}).`,
+      })
+    }
+    if (tile.seat === roundSeat) {
+      flowerPatterns.push({
+        key: `round-bonus-${tile.id}`,
+        name: `${tile.label} (Bunga Meja)`,
+        fan: 1,
+        description: `Bunga/Musim cocok Angin Meja (${WIND_LABEL_ID[context.roundWind]}).`,
       })
     }
   }
 
-  const hasAllSeasons = ["spring", "summer", "autumn", "winter"].every((s) =>
-    flowerCounts.has(`season-${s}`),
-  )
-  const hasAllFlowers = ["plum", "orchid", "chrysanthemum", "bamboo"].every(
-    (f) => flowerCounts.has(`flower-${f}`),
-  )
-  if (hasAllSeasons) {
-    flowerPatterns.push({
-      key: "set-of-seasons",
-      name: "Satu Set Musim",
-      fan: 2,
-      description: "Memiliki keempat ubin Musim.",
-    })
-  }
-  if (hasAllFlowers) {
-    flowerPatterns.push({
-      key: "set-of-flowers",
-      name: "Satu Set Bunga",
-      fan: 2,
-      description: "Memiliki keempat ubin Bunga.",
-    })
-  }
+  if (useHkosFaan) {
+    // -------------------------------------------------------------------------
+    // Pung / Kong Naga — +1 Fan per jenis Naga (3 atau 4 ubin identik).
+    // -------------------------------------------------------------------------
+    for (const dragon of DRAGON_IDS) {
+      const count = stdCounts.get(dragon.id) ?? 0
+      if (count >= 3) {
+        handPatterns.push({
+          key: `pung-${dragon.id}`,
+          name: `Pung ${dragon.name}`,
+          fan: 1,
+          description:
+            count >= 4
+              ? "Kong Naga (4 ubin identik)."
+              : "Pung Naga (3 ubin identik).",
+        })
+      }
+    }
 
-  // -------------------------------------------------------------------------
-  // Pung / Kong Naga — +1 Fan per jenis Naga (3 atau 4 ubin identik).
-  // -------------------------------------------------------------------------
-  for (const dragon of DRAGON_IDS) {
-    const count = stdCounts.get(dragon.id) ?? 0
-    if (count >= 3) {
+    // -------------------------------------------------------------------------
+    // Pung / Kong Angin — +1 Fan untuk Angin kursi, +1 Fan untuk Angin ronde.
+    // -------------------------------------------------------------------------
+    const seatWindId = `wind-${context.seatWind.toLowerCase()}`
+    const roundWindId = `wind-${context.roundWind.toLowerCase()}`
+
+    if ((stdCounts.get(seatWindId) ?? 0) >= 3) {
       handPatterns.push({
-        key: `pung-${dragon.id}`,
-        name: `Pung ${dragon.name}`,
+        key: "pung-seat-wind",
+        name: `Pung Angin Kursi (${WIND_LABEL_ID[context.seatWind]})`,
         fan: 1,
-        description:
-          count >= 4
-            ? "Kong Naga (4 ubin identik)."
-            : "Pung Naga (3 ubin identik).",
+        description: "Pung/Kong Angin yang sama dengan kursi pemain.",
       })
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // Pung / Kong Angin — +1 Fan untuk Angin kursi, +1 Fan untuk Angin ronde.
-  // -------------------------------------------------------------------------
-  const seatWindId = `wind-${context.seatWind.toLowerCase()}`
-  const roundWindId = `wind-${context.roundWind.toLowerCase()}`
-
-  if ((stdCounts.get(seatWindId) ?? 0) >= 3) {
-    handPatterns.push({
-      key: "pung-seat-wind",
-      name: `Pung Angin Kursi (${WIND_LABEL_ID[context.seatWind]})`,
-      fan: 1,
-      description: "Pung/Kong Angin yang sama dengan kursi pemain.",
-    })
-  }
-  if ((stdCounts.get(roundWindId) ?? 0) >= 3) {
-    handPatterns.push({
-      key: "pung-round-wind",
-      name: `Pung Angin Ronde (${WIND_LABEL_ID[context.roundWind]})`,
-      fan: 1,
-      description: "Pung/Kong Angin yang sama dengan Angin ronde.",
-    })
+    if ((stdCounts.get(roundWindId) ?? 0) >= 3) {
+      handPatterns.push({
+        key: "pung-round-wind",
+        name: `Pung Angin Ronde (${WIND_LABEL_ID[context.roundWind]})`,
+        fan: 1,
+        description: "Pung/Kong Angin yang sama dengan Angin ronde.",
+      })
+    }
   }
 
   // ===========================================================================
@@ -468,47 +451,53 @@ export function calculateHandScore(
   const thirteenOrphans = isThirteenOrphans(standardTiles, stdCounts)
   const sevenPairs = isSevenPairs(standardTiles, stdCounts)
   const structure = parseHandStructure(standardTiles)
-  const isValidHand =
+  const hasValidStructure =
     thirteenOrphans || sevenPairs || !!nineGatesSuit || structure.isValid
 
   if (thirteenOrphans) {
     // Thirteen Orphans adalah Limit Hand tersendiri.
     messages.push("Struktur atipikal: Thirteen Orphans (13 Yao).")
-    handPatterns.push({
-      key: "thirteen-orphans",
-      name: "Thirteen Orphans",
-      fan: 10,
-      description: "Satu tiap terminal & honor + satu pasangan. (Limit Hand)",
-    })
+    if (useHkosFaan) {
+      handPatterns.push({
+        key: "thirteen-orphans",
+        name: "Thirteen Orphans",
+        fan: 10,
+        description: "Satu tiap terminal & honor + satu pasangan. (Limit Hand)",
+      })
+    }
   } else if (nineGatesSuit) {
     // Nine Gates adalah Limit Hand satu-suit tersendiri.
     messages.push("Struktur atipikal: Nine Gates (Sembilan Gerbang).")
-    handPatterns.push({
-      key: "nine-gates",
-      name: "Nine Gates",
-      fan: 10,
-      description: `Pola 111-2345678-999 + ekstra (${SUIT_LABEL_ID[nineGatesSuit]}). Menunggu semua 1–9. (Limit Hand)`,
-    })
+    if (useHkosFaan) {
+      handPatterns.push({
+        key: "nine-gates",
+        name: "Nine Gates",
+        fan: 10,
+        description: `Pola 111-2345678-999 + ekstra (${SUIT_LABEL_ID[nineGatesSuit]}). Menunggu semua 1–9. (Limit Hand)`,
+      })
+    }
   } else if (sevenPairs) {
     // Seven Pairs — struktur atipikal (bukan 4 set + 1 pasang).
     messages.push("Struktur atipikal: Seven Pairs (Tujuh Pasang).")
-    if (isFlushSevenPairs(standardTiles)) {
-      handPatterns.push({
-        key: "flush-seven-pairs",
-        name: "Flush in Seven Unique Pairs",
-        fan: 10,
-        description:
-          "Tujuh pasang unik serba satu suit tanpa honor. (Limit Hand)",
-      })
-    } else {
-      handPatterns.push({
-        key: "seven-pairs",
-        name: "Seven Pairs",
-        fan: 4,
-        description: "Tepat 14 ubin membentuk 7 pasang berbeda.",
-      })
+    if (useHkosFaan) {
+      if (isFlushSevenPairs(standardTiles)) {
+        handPatterns.push({
+          key: "flush-seven-pairs",
+          name: "Flush in Seven Unique Pairs",
+          fan: 10,
+          description:
+            "Tujuh pasang unik serba satu suit tanpa honor. (Limit Hand)",
+        })
+      } else {
+        handPatterns.push({
+          key: "seven-pairs",
+          name: "Seven Pairs",
+          fan: 4,
+          description: "Tepat 14 ubin membentuk 7 pasang berbeda.",
+        })
+      }
     }
-  } else if (structure.isValid) {
+  } else if (hasValidStructure && structure.isValid) {
     // -----------------------------------------------------------------------
     // Rincian struktur untuk transparansi (ditampilkan di sidebar)
     // -----------------------------------------------------------------------
@@ -548,6 +537,7 @@ export function calculateHandScore(
     const pairIsDragon = pairId.startsWith("dragon-")
     const pairIsWind = pairId.startsWith("wind-")
 
+    if (useHkosFaan) {
     // --- All Chows (Ping Hu) & All Pungs (Toitoi) ---
     if (hasChow && !hasPungLike) {
       handPatterns.push({
@@ -713,6 +703,50 @@ export function calculateHandScore(
         description: "Empat Kong + satu pasangan. (Limit Hand)",
       })
     }
+    }
+
+    // --- Kong bonus: +1 Faan per Kong (empat sejenis) — Chicken & Jade HK ---
+    const repByIdFlush = new Map<string, Tile>()
+    for (const tile of standardTiles) {
+      if (!repByIdFlush.has(tile.id)) repByIdFlush.set(tile.id, tile)
+    }
+    for (const kongId of structure.kongs) {
+      const rep = repByIdFlush.get(kongId)
+      handPatterns.push({
+        key: `kong-bonus-${kongId}`,
+        name: rep ? `Kong ${rep.label}` : "Kong",
+        fan: 1,
+        description:
+          "+1 Faan tambahan per Kong (di atas Pong/Kong Naga/Angin jika ada).",
+      })
+    }
+
+    // --- Double Chi — Chicken & Jade HK ---
+    const chowStarts = structure.sets
+      .filter((s) => s.type === "chow")
+      .map((s) => s.id)
+    const chowDup = new Map<string, number>()
+    for (const startId of chowStarts) {
+      chowDup.set(startId, (chowDup.get(startId) ?? 0) + 1)
+    }
+    for (const [startId, copies] of chowDup) {
+      const pairs = Math.floor(copies / 2)
+      if (pairs < 1) continue
+      const rep = repById.get(startId)
+      let chowLabel = startId
+      if (rep?.category === "suit" && rep.value != null) {
+        const suit = SUIT_LABEL_ID[rep.suit]
+        chowLabel = `${suit} ${rep.value}-${rep.value + 1}-${rep.value + 2}`
+      }
+      for (let i = 0; i < pairs; i++) {
+        handPatterns.push({
+          key: `double-chow-${startId}-${i}`,
+          name: "Double Chi (Pasangan Chow sama)",
+          fan: 1,
+          description: `Dua set Chi identik (${chowLabel}). +1 Faan.`,
+        })
+      }
+    }
   } else if (standardTiles.length > 0) {
     messages.push(
       "Struktur belum lengkap (butuh 4 set + 1 pasang, atau tangan spesial).",
@@ -737,23 +771,59 @@ export function calculateHandScore(
     messages.push("Tangan Batas (Limit Hand) tercapai — skor komponen diabaikan.")
   }
 
+  if (
+    variant === "chicken" &&
+    hasValidStructure &&
+    effectiveHand.length === 0 &&
+    flowerPatterns.length === 0
+  ) {
+    effectiveHand = [
+      {
+        key: "chicken-hand",
+        name: "Chicken Hand",
+        fan: 0,
+        description:
+          "Tangan sah tanpa Faan HK — base 1.000 Jade Miles pada hitungan Chicken.",
+      },
+    ]
+  }
+
   // -------------------------------------------------------------------------
   // Gabungan pola & total
   // -------------------------------------------------------------------------
   const patterns = [...flowerPatterns, ...effectiveHand]
-  const totalFan = patterns.reduce((sum, p) => sum + p.fan, 0)
+  const rawFan = patterns.reduce((sum, p) => sum + p.fan, 0)
+  // EDIT HERE — payout/display cap at Limit 10 Faan
+  const totalFan = Math.min(LIMIT_FAN, rawFan)
+
+  const minFan = minFanForRuleset(variant)
+  let valid = hasValidStructure
+  if (valid && totalFan < minFan) {
+    valid = false
+    messages.push(
+      variant === "jade-hk"
+        ? "Jade HK butuh minimal 1 Faan — chicken hand tidak dihitung di meja ini."
+        : `Minimal ${minFan} Faan diperlukan untuk menang.`,
+    )
+  }
 
   if (mainHand.length === 0 && flowerHand.length === 0) {
     messages.unshift("Tangan masih kosong. Seret ubin ke area tangan pemain.")
   } else if (patterns.length === 0) {
-    messages.push("Belum ada pola bernilai Fan yang terdeteksi.")
+    messages.push("Belum ada pola bernilai Faan yang terdeteksi.")
+  }
+  if (rawFan > LIMIT_FAN) {
+    messages.push(
+      `Total ${rawFan} Faan dibatasi Limit ${LIMIT_FAN} Faan untuk bayaran.`,
+    )
   }
 
   return {
     totalFan,
     patterns,
     variant,
-    isValidHand,
+    hasValidStructure,
+    isValidHand: valid,
     isLimitHand,
     messages,
   }

@@ -4,9 +4,8 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { Calculator, X } from "lucide-react"
 
-import { getHkosPayout } from "@/lib/mahjong/payout"
+import { formatJadeMiles, getJadePayout } from "@/lib/mahjong/payout"
 import {
-  POINT_UNIT,
   computePayoutDeltas,
   type LiveSeat,
   type WinMethod,
@@ -36,11 +35,11 @@ export function ManualHandModal({
   const [fan, setFan] = useState(3)
   const [comboLabel, setComboLabel] = useState("")
 
-  const payout = useMemo(() => getHkosPayout(fan), [fan])
+  const payout = useMemo(() => getJadePayout(fan), [fan])
   const winnerPoints = useMemo(() => {
-    const base =
-      method === "self-draw" ? payout.totalTsumo : payout.perOpponentRon
-    return base * POINT_UNIT
+    return method === "self-draw"
+      ? payout.winnerSelfDraw
+      : payout.winnerDiscard
   }, [method, payout])
 
   const deltas = useMemo(
@@ -50,15 +49,15 @@ export function ManualHandModal({
         winnerSeatIndex,
         method,
         dealtBySeatIndex: method === "discard" ? dealtBySeatIndex : null,
-        winnerPoints,
+        totalFan: fan,
       }),
-    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, winnerPoints],
+    [seats.length, winnerSeatIndex, method, dealtBySeatIndex, fan],
   )
 
   const combos = useMemo(() => {
     const label =
       comboLabel.trim() ||
-      (payout.isLimit ? "Limit hand" : `${fan} Fan HKOS`)
+      (payout.isLimit ? "Limit 10 Faan" : `${fan} Faan Jade`)
     return [{ label, fan }]
   }, [comboLabel, fan, payout.isLimit])
 
@@ -105,10 +104,9 @@ export function ManualHandModal({
             Open tile calculator →
           </Link>
           <p className="text-sm text-muted-foreground">
-            Uses the HKOS payout table from{" "}
-            <span className="font-mono">lib/mahjong/payout</span> × unit{" "}
-            <span className="font-mono">{POINT_UNIT}</span>. Build the hand in
-            the calculator, or enter Fan here.
+            Jade Miles from Faan (per 1.000) — same table as /scan. Example:{" "}
+            {fan} Faan → B {formatJadeMiles(payout.basePoints)} → winner{" "}
+            {formatJadeMiles(winnerPoints)}.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -192,15 +190,19 @@ export function ManualHandModal({
 
           <div className="jade-card grid grid-cols-2 gap-2 p-3 font-mono text-[10px] uppercase tracking-[0.12em]">
             <div>
-              <p className="text-muted-foreground">Ron / lawan</p>
-              <p className="mt-0.5 text-sm">{payout.perOpponentRon}</p>
+              <p className="text-muted-foreground">Discard · pemenang</p>
+              <p className="mt-0.5 text-sm">
+                +{formatJadeMiles(payout.winnerDiscard)}
+              </p>
             </div>
             <div>
-              <p className="text-muted-foreground">Tsumo total</p>
-              <p className="mt-0.5 text-sm">{payout.totalTsumo}</p>
+              <p className="text-muted-foreground">Self-draw · pemenang</p>
+              <p className="mt-0.5 text-sm">
+                +{formatJadeMiles(payout.winnerSelfDraw)}
+              </p>
             </div>
             <div className="col-span-2 border-t border-jade-ink/25 pt-2">
-              <p className="text-muted-foreground">Club points (×{POINT_UNIT})</p>
+              <p className="text-muted-foreground">This hand · Jade Miles</p>
               <p className="mt-0.5 text-lg text-jade-accent">
                 {formatPlainPoints(winnerPoints)}
               </p>

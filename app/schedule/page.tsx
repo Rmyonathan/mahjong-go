@@ -10,7 +10,6 @@ import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
 import { InviteCodeModal } from "@/components/schedule/invite-code-modal"
 import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import {
-  boardLabel,
   buildScheduleDateStrip,
   extractInviteCode,
   formatCountdown,
@@ -54,6 +53,8 @@ export default function SchedulePage() {
 function SchedulePageInner() {
   const searchParams = useSearchParams()
   const urlCode = searchParams.get("code")?.trim().toUpperCase() || null
+  const openCreateFromUrl =
+    searchParams.get("create") === "1" || searchParams.get("create") === "true"
 
   const [meets, setMeets] = useState<ApiMeet[]>([])
   const [viewer, setViewer] = useState<ScheduleViewer | null>(null)
@@ -70,7 +71,7 @@ function SchedulePageInner() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [bookingMeetId, setBookingMeetId] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(openCreateFromUrl)
   const [proOpen, setProOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [liveByMeetId, setLiveByMeetId] = useState<Record<string, string>>({})
@@ -150,10 +151,11 @@ function SchedulePageInner() {
     if (fromUrl) setInviteDraft(fromUrl)
     else if (merged.length) setInviteDraft(merged[merged.length - 1]!)
     setInvitesReady(true)
-    if (fromUrl && typeof window !== "undefined") {
+    if (openCreateFromUrl) setCreateOpen(true)
+    if ((fromUrl || openCreateFromUrl) && typeof window !== "undefined") {
       window.history.replaceState(null, "", "/schedule")
     }
-  }, [urlCode])
+  }, [urlCode, openCreateFromUrl])
 
   useEffect(() => {
     if (!invitesReady) return
@@ -188,9 +190,45 @@ function SchedulePageInner() {
     })
   }, [meets, selectedYmd, boardFilter])
 
+  const { upcomingMeets, pastMeets } = useMemo(() => {
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const upcoming: ApiMeet[] = []
+    const past: ApiMeet[] = []
+    for (const meet of filtered) {
+      const starts = new Date(meet.startsAt).getTime()
+      if (meet.status === "COMPLETED" || starts < startOfToday.getTime()) {
+        past.push(meet)
+      } else {
+        upcoming.push(meet)
+      }
+    }
+    upcoming.sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+    )
+    past.sort(
+      (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime(),
+    )
+    return { upcomingMeets: upcoming, pastMeets: past }
+  }, [filtered])
+
+  const [listFilter, setListFilter] = useState<"all" | "upcoming" | "mine">(
+    "all",
+  )
+  const [pastOpen, setPastOpen] = useState(false)
+
   const bookingMeet = meets.find((meet) => meet.id === bookingMeetId) ?? null
   const isAdmin = viewer?.role === "ADMIN"
   const isPro = membershipTier === "PRO" || isAdmin
+
+  const visibleUpcoming = useMemo(() => {
+    if (listFilter === "mine") {
+      return upcomingMeets.filter(
+        (meet) => meet.yourBooking || meet.isHost || meet.canLaunchLive,
+      )
+    }
+    return upcomingMeets
+  }, [upcomingMeets, listFilter])
 
   async function bookMeet(meetId: string, method: ApiPaymentMethod) {
     const response = await fetch(`/api/schedule/${meetId}/book`, {
@@ -297,43 +335,72 @@ function SchedulePageInner() {
         約
       </span>
 
-      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            House calendar · Postgres
+            House calendar
           </p>
-          <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] tracking-tight sm:text-7xl">
-            Schedule & booking
+          <h1 className="mt-2 font-serif text-4xl uppercase leading-[0.92] tracking-tight sm:text-6xl">
+            Schedule
           </h1>
-          <p className="mt-4 max-w-xl text-sm leading-relaxed">
-            Request a seat — the table host must accept before you&apos;re
-            confirmed. Club tables get unlimited scans; Free-hosted tables get
-            3.
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Book a seat, launch live tables, and manage club meets.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {viewer ? (
-            <span className="border-[2px] border-jade-ink bg-card px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-              {viewer.name} · {isPro ? "Pro" : "Free"}
-            </span>
-          ) : (
-            <Link
-              href="/login"
-              className="border-[2px] border-jade-ink bg-card px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
-            >
-              Login to book
-            </Link>
-          )}
-          {viewer ? (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex h-10 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)]"
-            >
-              {isAdmin ? "+ Club meet" : "+ My table"}
-            </button>
-          ) : null}
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {viewer ? (
+              <span className="rounded-full border border-[#102A20]/12 bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                {viewer.name} · {isPro ? "Pro" : "Free"}
+              </span>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-full border border-[#102A20]/12 bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em]"
+              >
+                Login to book
+              </Link>
+            )}
+            {viewer ? (
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex h-10 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)]"
+              >
+                {isAdmin ? "+ Create Schedule" : "+ My table"}
+              </button>
+            ) : null}
+          </div>
+          <div
+            className="inline-flex flex-wrap rounded-full border border-[#102A20]/10 bg-white p-1"
+            role="tablist"
+            aria-label="Schedule filter"
+          >
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "upcoming", label: "Upcoming" },
+                { id: "mine", label: "My Bookings" },
+              ] as const
+            ).map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={listFilter === entry.id}
+                onClick={() => setListFilter(entry.id)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em]",
+                  listFilter === entry.id
+                    ? "bg-jade-ink text-white"
+                    : "text-jade-ink/70 hover:bg-jade-soft",
+                )}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -477,7 +544,8 @@ function SchedulePageInner() {
         </p>
       ) : null}
 
-      {filtered.length === 0 ? (
+      {visibleUpcoming.length === 0 &&
+      (listFilter !== "all" || pastMeets.length === 0) ? (
         <div className="jade-card mt-8 px-5 py-10">
           <p className="font-serif text-3xl">No meets on this filter.</p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -486,27 +554,76 @@ function SchedulePageInner() {
               : "Check back soon — hosts post weekly seats here."}
           </p>
         </div>
-      ) : (
-        <ul className="mt-8 grid gap-5 lg:grid-cols-2">
-          {filtered.map((meet) => (
-            <MeetCard
-              key={meet.id}
-              meet={meet}
-              now={now}
-              isPro={isPro}
-              loggedIn={Boolean(viewer)}
-              liveSessionId={liveByMeetId[meet.id] ?? null}
-              onBook={() => setBookingMeetId(meet.id)}
-              onCancel={() => cancelOrLeave(meet.id)}
-              onWaitlist={() => joinWaitlist(meet.id)}
-              onLocked={() => setProOpen(true)}
-              onReview={(bookingId, action) =>
-                reviewBooking(meet.id, bookingId, action)
-              }
-            />
-          ))}
-        </ul>
-      )}
+      ) : null}
+
+      {visibleUpcoming.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="font-serif text-2xl uppercase">Upcoming sessions</h2>
+          <ul className="mt-4 grid gap-5 lg:grid-cols-2">
+            {visibleUpcoming.map((meet) => (
+              <MeetCard
+                key={meet.id}
+                meet={meet}
+                now={now}
+                isPro={isPro}
+                isAdmin={isAdmin}
+                loggedIn={Boolean(viewer)}
+                liveSessionId={liveByMeetId[meet.id] ?? null}
+                onBook={() => setBookingMeetId(meet.id)}
+                onCancel={() => cancelOrLeave(meet.id)}
+                onWaitlist={() => joinWaitlist(meet.id)}
+                onLocked={() => setProOpen(true)}
+                onReview={(bookingId, action) =>
+                  reviewBooking(meet.id, bookingId, action)
+                }
+                onDeleted={() => void refresh()}
+                onManaged={() => void refresh()}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {listFilter === "all" && pastMeets.length > 0 ? (
+        <section className="mt-10">
+          <button
+            type="button"
+            onClick={() => setPastOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <h2 className="font-serif text-2xl uppercase">
+              Past / completed sessions
+            </h2>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              {pastOpen ? "Hide" : `Show · ${pastMeets.length}`}
+            </span>
+          </button>
+          {pastOpen ? (
+            <ul className="mt-4 grid gap-5 lg:grid-cols-2">
+              {pastMeets.map((meet) => (
+                <MeetCard
+                  key={meet.id}
+                  meet={meet}
+                  now={now}
+                  isPro={isPro}
+                  isAdmin={isAdmin}
+                  loggedIn={Boolean(viewer)}
+                  liveSessionId={liveByMeetId[meet.id] ?? null}
+                  onBook={() => setBookingMeetId(meet.id)}
+                  onCancel={() => cancelOrLeave(meet.id)}
+                  onWaitlist={() => joinWaitlist(meet.id)}
+                  onLocked={() => setProOpen(true)}
+                  onReview={(bookingId, action) =>
+                    reviewBooking(meet.id, bookingId, action)
+                  }
+                  onDeleted={() => void refresh()}
+                  onManaged={() => void refresh()}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       <BookSeatModal
         open={Boolean(bookingMeet)}
@@ -547,6 +664,7 @@ function MeetCard({
   meet,
   now,
   isPro,
+  isAdmin,
   loggedIn,
   liveSessionId,
   onBook,
@@ -554,10 +672,13 @@ function MeetCard({
   onWaitlist,
   onLocked,
   onReview,
+  onDeleted,
+  onManaged,
 }: {
   meet: ApiMeet
   now: number
   isPro: boolean
+  isAdmin: boolean
   loggedIn: boolean
   liveSessionId: string | null
   onBook: () => void
@@ -565,6 +686,8 @@ function MeetCard({
   onWaitlist: () => void
   onLocked: () => void
   onReview: (bookingId: string, action: "approve" | "reject" | "release") => void
+  onDeleted: () => void
+  onManaged: () => void
 }) {
   const remaining = meet.proEarlyBirdUntil
     ? Math.max(0, new Date(meet.proEarlyBirdUntil).getTime() - now)
@@ -577,13 +700,72 @@ function MeetCard({
   const youWaiting = meet.yourBooking?.status === "WAITLIST"
   const preview = meet.roster.slice(0, 4)
   const more = Math.max(0, meet.roster.length - preview.length)
+  const canSwapRoster =
+    meet.isHost &&
+    !liveSessionId &&
+    meet.status !== "COMPLETED" &&
+    meet.status !== "CANCELLED"
+  const rosterForDisplay = canSwapRoster ? meet.roster : preview
+  const rosterOverflow = canSwapRoster ? 0 : more
   const progress = Math.min(
     100,
     Math.round((meet.confirmedCount / meet.maxSeats) * 100),
   )
 
+  function releaseConfirmedSeat(
+    bookingId: string,
+    nickname: string,
+    seatNumber: number | null,
+  ) {
+    const seatLabel = seatNumber ? `#${seatNumber}` : "this seat"
+    if (
+      !confirm(
+        `Lepas ${nickname} dari kursi ${seatLabel}?\n\nKursi kosong sebelum go-live — Accept pemain baru di Seat requests, atau waitlist naik ke pending otomatis.`,
+      )
+    ) {
+      return
+    }
+    onReview(bookingId, "release")
+  }
+
+  async function adminDelete() {
+    if (
+      !confirm(
+        `Remove “${meet.title}” from the schedule?\n\nIt disappears from Schedule only — game sessions and player history stay in the club archive.`,
+      )
+    ) {
+      return
+    }
+    const response = await fetch(`/api/schedule/${meet.id}`, {
+      method: "DELETE",
+    })
+    const data = (await response.json()) as { error?: string }
+    if (!response.ok) {
+      window.alert(data.error ?? "Could not remove from schedule")
+      return
+    }
+    onDeleted()
+  }
+
+  async function adminSetStatus(status: ApiMeet["status"]) {
+    const response = await fetch(`/api/schedule/${meet.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    })
+    const data = (await response.json()) as { error?: string }
+    if (!response.ok) {
+      window.alert(data.error ?? "Could not update")
+      return
+    }
+    onManaged()
+  }
+
+  const hostReviewing =
+    meet.isHost && meet.pendingRequests.length > 0
+
   return (
-    <li className="jade-card flex flex-col overflow-hidden">
+    <li className="jade-card relative z-0 flex flex-col overflow-hidden hover:z-10">
       {meet.isClubTable ? (
         <div className="border-b border-jade-gold/30 bg-jade-gold/15 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
           Club table · {meet.scanLabel}
@@ -631,9 +813,6 @@ function MeetCard({
           <span className="rounded-full border border-[#102A20]/12 bg-[#F6F4EE] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             {meet.whenLabel}
           </span>
-          <span className="rounded-full border border-[#102A20]/12 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {boardLabel(meet.boardType)}
-          </span>
           <span className="rounded-full border border-jade-accent/30 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
             {formatFeeIdr(meet.feeIdr)}
           </span>
@@ -662,64 +841,127 @@ function MeetCard({
         </div>
 
         <div className="mt-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            Confirmed roster
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {preview.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Confirmed roster
+            </p>
+            {canSwapRoster && meet.roster.length > 0 ? (
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-jade-accent">
+                Ganti pemain sebelum launch
+              </span>
+            ) : null}
+            {liveSessionId ? (
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                Locked · table live
+              </span>
+            ) : null}
+          </div>
+          <ul
+            className={cn(
+              "mt-2 gap-2",
+              canSwapRoster ? "flex flex-col" : "flex flex-wrap",
+            )}
+          >
+            {rosterForDisplay.length === 0 ? (
               <li className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
                 No seats claimed yet
               </li>
             ) : (
-              preview.map((player) => (
+              rosterForDisplay.map((player) => (
                 <li
                   key={player.bookingId}
                   className={cn(
-                    "inline-flex items-center gap-1.5 border border-jade-ink bg-card px-2 py-1",
-                    player.isYou && "border-jade-accent bg-muted",
+                    canSwapRoster
+                      ? "flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#102A20]/12 bg-white/90 px-2.5 py-2"
+                      : "inline-flex items-center gap-1.5 border border-jade-ink bg-card px-2 py-1",
+                    !canSwapRoster &&
+                      player.isYou &&
+                      "border-jade-accent bg-muted",
                   )}
                 >
-                  <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
-                    {player.badge}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
+                      {player.badge}
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
+                      {player.seatNumber != null
+                        ? `#${player.seatNumber} · `
+                        : null}
+                      {player.nickname} · {player.rating}
+                    </span>
                   </span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
-                    {player.nickname} · {player.rating}
-                  </span>
+                  {canSwapRoster ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        releaseConfirmedSeat(
+                          player.bookingId,
+                          player.nickname,
+                          player.seatNumber,
+                        )
+                      }
+                      className="tap-press rounded-full border border-jade-red/35 bg-white px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-jade-red hover:bg-jade-red/10"
+                    >
+                      Ganti / lepas
+                    </button>
+                  ) : null}
                 </li>
               ))
             )}
-            {more > 0 ? (
+            {rosterOverflow > 0 ? (
               <li className="inline-flex items-center border border-dashed border-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                +{more} more
+                +{rosterOverflow} more
               </li>
             ) : null}
           </ul>
+          {canSwapRoster && meet.waitlistCount > 0 ? (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Waitlist ({meet.waitlistCount}) — otomatis pindah ke Seat requests
+              setelah Anda lepas kursi.
+            </p>
+          ) : null}
         </div>
 
-        {meet.isHost && meet.pendingRequests.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-jade-gold/40 bg-jade-gold/10 p-3">
+        {hostReviewing ? (
+          <div
+            id={`seat-requests-${meet.id}`}
+            className="relative z-20 mt-4 rounded-xl border border-jade-gold/40 bg-jade-gold/10 p-3"
+          >
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink">
               Seat requests · {meet.pendingRequests.length}
             </p>
+            {youPending ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                You also have a seat request — use Accept/Reject below or{" "}
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="font-medium text-jade-ink underline-offset-2 hover:underline"
+                >
+                  withdraw yours
+                </button>
+                .
+              </p>
+            ) : null}
             <ul className="mt-2 space-y-2">
               {meet.pendingRequests.map((req) => (
                 <li
                   key={req.bookingId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-2"
+                  className="flex flex-col gap-2 rounded-lg bg-white/90 px-2.5 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <span className="text-sm font-medium">{req.nickname}</span>
-                  <div className="flex gap-1.5">
+                  <div className="relative z-10 flex shrink-0 gap-1.5">
                     <button
                       type="button"
                       onClick={() => onReview(req.bookingId, "approve")}
-                      className="rounded-full bg-jade-accent px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
+                      className="tap-press rounded-full bg-jade-accent px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white"
                     >
                       Accept
                     </button>
                     <button
                       type="button"
                       onClick={() => onReview(req.bookingId, "reject")}
-                      className="rounded-full border border-[#102A20]/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                      className="tap-press rounded-full border border-[#102A20]/15 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] hover:bg-jade-soft"
                     >
                       Reject
                     </button>
@@ -760,11 +1002,11 @@ function MeetCard({
                 </p>
               )}
             </div>
-          ) : youPending ? (
+          ) : youPending && !hostReviewing ? (
             <button
               type="button"
               onClick={onCancel}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-jade-gold bg-jade-gold/15 px-4 text-sm font-semibold text-jade-ink"
+              className="inline-flex h-11 w-full items-center justify-center rounded-full border border-jade-gold bg-jade-gold/15 px-4 text-sm font-semibold text-jade-ink"
             >
               ⏳ Pending host approval · withdraw
             </button>
@@ -820,6 +1062,47 @@ function MeetCard({
             >
               {liveSessionId ? "● Open live table →" : "Launch live table →"}
             </Link>
+          ) : null}
+
+          {isAdmin ? (
+            <div className="mt-1 flex flex-wrap gap-2">
+              {meet.isHost || meet.pendingCount > 0 ? (
+                <button
+                  type="button"
+                  disabled={!hostReviewing}
+                  onClick={() => {
+                    document
+                      .getElementById(`seat-requests-${meet.id}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+                  }}
+                  className={cn(
+                    "inline-flex h-9 flex-1 items-center justify-center rounded-full border border-jade-gold/40 bg-jade-gold/10 px-3 font-mono text-[10px] uppercase tracking-[0.12em]",
+                    hostReviewing && "tap-press hover:bg-jade-gold/20",
+                  )}
+                >
+                  Review QRIS · {meet.pendingCount} pending
+                </button>
+              ) : null}
+              <select
+                aria-label="Manage status"
+                value={meet.status}
+                onChange={(event) =>
+                  void adminSetStatus(event.target.value as ApiMeet["status"])
+                }
+                className="h-9 flex-1 rounded-full border border-[#102A20]/15 bg-white px-3 font-mono text-[10px] uppercase tracking-[0.12em]"
+              >
+                <option value="OPEN">Manage · OPEN</option>
+                <option value="FULL">Manage · FULL</option>
+                <option value="COMPLETED">Manage · COMPLETED</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void adminDelete()}
+                className="inline-flex h-9 items-center justify-center rounded-full border border-jade-red/40 px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-red"
+              >
+                Remove
+              </button>
+            </div>
           ) : null}
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   DndContext,
@@ -16,22 +17,18 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
-import { ArrowDownUp, Camera, Trash2, Trophy } from "lucide-react"
+import { ArrowDownUp, Camera, ChevronLeft, Trash2, Trophy } from "lucide-react"
 
-import { AiAnalysisDialog, type StrategySelection } from "@/components/mahjong/ai-analysis-dialog"
-import { AiCoachHud } from "@/components/mahjong/ai-coach-hud"
-import { AiSuggestions } from "@/components/mahjong/ai-suggestions"
 import { GameContextControls } from "@/components/mahjong/game-context-controls"
 import { WinScoreDialog } from "@/components/mahjong/win-score-dialog"
 import { PhotoScanModal } from "@/components/scan/photo-scan-modal"
 import { calculateHandScore } from "@/lib/mahjong/engine"
+import { RulesetPicker } from "@/components/mahjong/ruleset-picker"
+import type { RuleVariant } from "@/lib/mahjong/types"
 import type { ScoreResult } from "@/lib/mahjong/engine"
-import { suggestTargetHands } from "@/lib/mahjong/suggestions"
-import { analyzeHand, getRecommendations } from "@/lib/mahjong/shanten"
 import { sortMainHand } from "@/lib/mahjong/sort-hand"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
 import type { GameContext, Tile, HandTile } from "@/lib/mahjong/types"
-import { POINT_UNIT } from "@/lib/session/live-demo"
 import { savePendingHand } from "@/lib/session/pending-hand"
 import { Button } from "@/components/ui/button"
 import { MahjongTile } from "@/components/mahjong/mahjong-tile"
@@ -41,12 +38,14 @@ import {
   MAIN_HAND_DROPPABLE_ID,
   MAX_FLOWER_TILES,
   MAX_MAIN_TILES,
+  STANDARD_WIN_TILES,
   TileDropzone,
   type HandZone,
 } from "@/components/mahjong/player-hand"
-import type { TrackedTarget } from "@/components/mahjong/strategy-hud"
-import { StrategyHud } from "@/components/mahjong/strategy-hud"
+import { DASHBOARD_HREF } from "@/lib/nav"
 import { cn } from "@/lib/utils"
+
+const SCAN_RULESET_KEY = "jade_scan_ruleset"
 
 function createInstanceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -82,19 +81,38 @@ export function CalculatorWorkspace() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const applyToSessionId = searchParams.get("applyToSession")
+  const scanBackHref = applyToSessionId
+    ? `/session/live?id=${encodeURIComponent(applyToSessionId)}`
+    : DASHBOARD_HREF
+  const scanBackLabel = applyToSessionId ? "Back to table" : "Home"
   const [mainHand, setMainHand] = React.useState<HandTile[]>([])
   const [flowerHand, setFlowerHand] = React.useState<HandTile[]>([])
   const [activeTile, setActiveTile] = React.useState<Tile | null>(null)
-  const [analysisOpen, setAnalysisOpen] = React.useState(false)
-  const [coachOpen, setCoachOpen] = React.useState(false)
-  const [trackedTargets, setTrackedTargets] = React.useState<TrackedTarget[]>(
-    [],
-  )
-  const [activeTarget, setActiveTarget] = React.useState<string | null>(null)
   const [gameContext, setGameContext] = React.useState<GameContext>({
     seatWind: "East",
     roundWind: "East",
   })
+  const [ruleset, setRuleset] = React.useState<RuleVariant>("jade-hk")
+
+  React.useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SCAN_RULESET_KEY)
+      if (stored === "chicken" || stored === "jade-hk") {
+        setRuleset(stored)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const handleRulesetChange = React.useCallback((next: RuleVariant) => {
+    setRuleset(next)
+    try {
+      window.localStorage.setItem(SCAN_RULESET_KEY, next)
+    } catch {
+      /* ignore */
+    }
+  }, [])
   const [winDialogOpen, setWinDialogOpen] = React.useState(false)
   const [winScore, setWinScore] = React.useState<ScoreResult | null>(null)
   const [photoScanOpen, setPhotoScanOpen] = React.useState(false)
@@ -185,8 +203,6 @@ export function CalculatorWorkspace() {
   const clearHand = React.useCallback(() => {
     setMainHand([])
     setFlowerHand([])
-    setTrackedTargets([])
-    setActiveTarget(null)
   }, [])
 
   /** Apply Gemini-detected tiles into the calculator; scoring stays in engine. */
@@ -208,8 +224,6 @@ export function CalculatorWorkspace() {
     }
     setMainHand(nextMain)
     setFlowerHand(nextFlower)
-    setTrackedTargets([])
-    setActiveTarget(null)
   }, [])
 
   // [BARU] Urutkan tangan: Bulatan → Bambu → Karakter → Honor.
@@ -260,100 +274,21 @@ export function CalculatorWorkspace() {
     }
   }
 
-  const visibleTiles = React.useMemo(
-    () => [...mainHand, ...flowerHand],
-    [mainHand, flowerHand],
-  )
-
-  const currentSuggestions = React.useMemo(
-    () => suggestTargetHands(mainHand),
+  const mainTileCount = React.useMemo(
+    () => mainHand.filter((t) => t.category !== "bonus").length,
     [mainHand],
   )
 
-  React.useEffect(() => {
-    const validKeys = new Set(currentSuggestions.map((s) => s.key))
-    setTrackedTargets((prev) => {
-      const next = prev.filter((t) => validKeys.has(t.key))
-      if (next.length === prev.length) return prev
-      return next
-    })
-  }, [currentSuggestions])
-
-  React.useEffect(() => {
-    if (
-      activeTarget &&
-      !trackedTargets.some((t) => t.key === activeTarget)
-    ) {
-      setActiveTarget(trackedTargets[0]?.key ?? null)
-    }
-  }, [trackedTargets, activeTarget])
-
-  function handleConfirmStrategy({ standard, legendary }: StrategySelection) {
-    const keys = [...standard, ...(legendary ? [legendary] : [])]
-    const next = currentSuggestions
-      .filter((s) => keys.includes(s.key))
-      .map((s) => ({ key: s.key, name: s.name }))
-    setTrackedTargets(next)
-    setActiveTarget(next[0]?.key ?? null)
-    if (isDesktop) {
-      setCoachOpen(true)
-    }
-  }
-
-  const initialStandard = React.useMemo(
-    () =>
-      trackedTargets
-        .filter((t) => {
-          const s = currentSuggestions.find((c) => c.key === t.key)
-          return s?.category === "standard"
-        })
-        .map((t) => t.key),
-    [trackedTargets, currentSuggestions],
-  )
-
-  const initialLegendary = React.useMemo(() => {
-    const found = trackedTargets.find((t) => {
-      const s = currentSuggestions.find((c) => c.key === t.key)
-      return s?.category === "legendary"
-    })
-    return found?.key ?? null
-  }, [trackedTargets, currentSuggestions])
-
-  const activeTargetName =
-    trackedTargets.find((t) => t.key === activeTarget)?.name ?? null
-
-  // [BARU] Hitung ulang shanten + uke-ire setiap activeTarget / tangan berubah.
-  const handAnalysis = React.useMemo(
-    () => analyzeHand(mainHand, visibleTiles, activeTarget),
-    [mainHand, visibleTiles, activeTarget],
-  )
-
-  const recommendations = React.useMemo(
-    () => getRecommendations(mainHand, visibleTiles, activeTarget),
-    [mainHand, visibleTiles, activeTarget],
-  )
-
-  const analysisForHud = React.useMemo(
-    () => ({ ...handAnalysis, recommendations }),
-    [handAnalysis, recommendations],
-  )
-
-  const isWinningForTarget = React.useMemo(() => {
-    if (activeTarget === null || handAnalysis.shanten !== -1) return false
-    const standardCount = mainHand.filter((t) => t.category !== "bonus").length
-    if (standardCount !== 14) return false
-    return calculateHandScore(mainHand, flowerHand, gameContext).isValidHand
-  }, [activeTarget, handAnalysis.shanten, mainHand, flowerHand, gameContext])
+  const canCalculateWin =
+    mainTileCount >= STANDARD_WIN_TILES && mainTileCount <= MAX_MAIN_TILES
 
   function handleCalculateWin() {
-    const result = calculateHandScore(mainHand, flowerHand, gameContext)
+    const result = calculateHandScore(mainHand, flowerHand, gameContext, {
+      variant: ruleset,
+    })
     setWinScore(result)
     setWinDialogOpen(true)
   }
-
-  const handleActiveTargetChange = React.useCallback((key: string) => {
-    setActiveTarget(key)
-  }, [])
 
   const isEmpty = mainHand.length === 0 && flowerHand.length === 0
 
@@ -372,8 +307,8 @@ export function CalculatorWorkspace() {
     savePendingHand({
       sessionId: applyToSessionId,
       totalFan: payload.totalFan,
-      pointsRon: payload.pointsRon * POINT_UNIT,
-      pointsTsumo: payload.pointsTsumo * POINT_UNIT,
+      pointsRon: payload.pointsRon,
+      pointsTsumo: payload.pointsTsumo,
       method: "discard",
       combos: payload.combos,
       tileIds,
@@ -392,14 +327,6 @@ export function CalculatorWorkspace() {
         applyToSessionId={applyToSessionId}
         tileIds={mainHand.map((tile) => tile.id)}
         onApplyToSession={handleApplyToSession}
-      />
-      <AiAnalysisDialog
-        open={analysisOpen}
-        onOpenChange={setAnalysisOpen}
-        mainHand={mainHand}
-        initialStandard={initialStandard}
-        initialLegendary={initialLegendary}
-        onConfirm={handleConfirmStrategy}
       />
       <PhotoScanModal
         open={photoScanOpen}
@@ -478,19 +405,21 @@ export function CalculatorWorkspace() {
         onDragCancel={() => setActiveTile(null)}
       >
         <div className="scan-desk relative flex h-[calc(100dvh-4.5rem)] w-full flex-col overflow-hidden">
-        <div className="fixed left-4 top-20 z-40 lg:top-4">
+        <div className="fixed left-4 top-20 z-40 flex max-w-sm flex-col gap-3 lg:top-4">
           <GameContextControls
             context={gameContext}
             onChange={setGameContext}
           />
+          <div className="border-[2px] border-jade-ink bg-parchment/95 p-3 shadow-[4px_4px_0_0_var(--jade-ink)]">
+            <RulesetPicker
+              value={ruleset}
+              onChange={handleRulesetChange}
+              compact
+            />
+          </div>
         </div>
 
-        <div
-          className={cn(
-            "flex min-h-0 flex-1 flex-col",
-            coachOpen && "pr-96",
-          )}
-        >
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-1 items-start justify-center overflow-auto px-4 py-6">
             <TileBank
               variant="table"
@@ -541,7 +470,7 @@ export function CalculatorWorkspace() {
           </footer>
         </div>
 
-        {isWinningForTarget ? (
+        {canCalculateWin ? (
           <Button
             type="button"
             onClick={handleCalculateWin}
@@ -556,38 +485,6 @@ export function CalculatorWorkspace() {
           </Button>
         ) : null}
 
-        {!coachOpen ? (
-          <Button
-            type="button"
-            disabled={mainHand.length === 0}
-            onClick={() =>
-              trackedTargets.length > 0
-                ? setCoachOpen(true)
-                : setAnalysisOpen(true)
-            }
-            className={cn(
-              "scan-cta-accent fixed right-8 top-1/2 z-50 -translate-y-1/2 gap-2 rounded-none px-6 py-4 font-mono text-sm uppercase tracking-[0.14em]",
-              "hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none",
-              "disabled:opacity-40",
-            )}
-          >
-            <span aria-hidden>🧠</span>
-            {trackedTargets.length > 0 ? "Pelatih AI" : "Pilih Strategi AI"}
-          </Button>
-        ) : null}
-
-        <AiCoachHud
-          open={coachOpen}
-          onOpenChange={setCoachOpen}
-          onRequestAnalysis={() => setAnalysisOpen(true)}
-          mainHand={mainHand}
-          analysis={analysisForHud}
-          trackedTargets={trackedTargets}
-          activeTarget={activeTarget}
-          onActiveTargetChange={handleActiveTargetChange}
-          activeTargetName={activeTargetName}
-        />
-
         {sharedDialogs}
         </div>
         {dragOverlay}
@@ -597,39 +494,37 @@ export function CalculatorWorkspace() {
 
   return (
     <div className="scan-desk relative flex min-h-[100dvh] w-full flex-col">
-      <header className="relative z-20 flex shrink-0 touch-manipulation items-center justify-between gap-2 border-b-[2px] border-jade-ink bg-card px-3 py-2">
-        <GameContextControls
-          compact
-          context={gameContext}
-          onChange={setGameContext}
-          className="border-0 bg-transparent p-0 shadow-none backdrop-blur-none"
-        />
-        <div className="flex shrink-0 touch-manipulation items-center gap-1">
-          {isWinningForTarget ? (
-            <Button
-              type="button"
-              size="icon-sm"
-              onClick={handleCalculateWin}
-              aria-label="Hitung menang"
-              className="scan-cta touch-manipulation rounded-none"
-            >
-              <Trophy className="size-4" />
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            size="icon-sm"
-            disabled={mainHand.length === 0}
-            onClick={() => setAnalysisOpen(true)}
-            aria-label="Strategi AI"
-            className="scan-cta-accent touch-manipulation rounded-none disabled:opacity-40"
-          >
-            <span aria-hidden className="text-sm">
-              🧠
-            </span>
-          </Button>
-          {handControls(true)}
+      <header className="relative z-20 flex shrink-0 touch-manipulation flex-col gap-2 border-b-[2px] border-jade-ink bg-card px-3 py-2">
+        <Link
+          href={scanBackHref}
+          className="tap-press inline-flex items-center gap-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent"
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          {scanBackLabel}
+        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <GameContextControls
+            compact
+            context={gameContext}
+            onChange={setGameContext}
+            className="border-0 bg-transparent p-0 shadow-none backdrop-blur-none"
+          />
+          <div className="flex shrink-0 touch-manipulation items-center gap-1">
+            {canCalculateWin ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                onClick={handleCalculateWin}
+                aria-label="Hitung menang"
+                className="scan-cta touch-manipulation rounded-none"
+              >
+                <Trophy className="size-4" />
+              </Button>
+            ) : null}
+            {handControls(true)}
+          </div>
         </div>
+        <RulesetPicker value={ruleset} onChange={handleRulesetChange} compact />
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -694,39 +589,6 @@ export function CalculatorWorkspace() {
           {dragOverlay}
         </DndContext>
 
-        {trackedTargets.length > 0 ? (
-          <section className="shrink-0 border-t-[2px] border-jade-ink bg-card px-3 py-3 pb-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="font-mono text-xs uppercase tracking-[0.16em] text-jade-ink">
-                Pelatih AI
-              </h2>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="touch-manipulation h-8 rounded-none border-[2px] border-jade-ink bg-parchment font-mono text-[10px] uppercase tracking-[0.12em] text-jade-ink"
-                onClick={() => setAnalysisOpen(true)}
-              >
-                Ubah Strategi
-              </Button>
-            </div>
-            <div className="flex flex-col gap-3">
-              <StrategyHud
-                targets={trackedTargets}
-                activeTarget={activeTarget}
-                onActiveTargetChange={handleActiveTargetChange}
-                className="rounded-none border-[2px] border-jade-ink bg-parchment"
-              />
-              <AiSuggestions
-                variant="glass"
-                mainHand={mainHand}
-                analysis={analysisForHud}
-                activeTarget={activeTarget}
-                activeTargetName={activeTargetName}
-              />
-            </div>
-          </section>
-        ) : null}
       </div>
 
       {sharedDialogs}

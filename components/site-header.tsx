@@ -20,6 +20,8 @@ type AuthUser = {
   name: string
   role: "ADMIN" | "MEMBER"
   playerId?: string | null
+  isPro?: boolean
+  membershipTier?: "FREE" | "PRO"
 }
 
 export function SiteHeader() {
@@ -128,7 +130,13 @@ export function SiteHeader() {
   const brandHref = loggedIn ? DASHBOARD_HREF : "/"
   // Always hub when multiple tables — never inflate the CTA label
   const liveHref = "/live"
-  const homeActive = pathname === "/"
+  // EDIT HERE — logged-in Home → dashboard; guests → landing
+  const homeHref = loggedIn ? DASHBOARD_HREF : "/"
+  const homeActive =
+    pathname === homeHref ||
+    (loggedIn &&
+      (pathname === DASHBOARD_HREF || pathname.startsWith(`${DASHBOARD_HREF}/`))) ||
+    (!loggedIn && pathname === "/")
 
   return (
     <>
@@ -161,6 +169,17 @@ export function SiteHeader() {
                 className="inline-flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
               >
                 <Link
+                  href={DASHBOARD_HREF}
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    homeActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
+                  )}
+                >
+                  Home
+                </Link>
+                <Link
                   href={SCHEDULE_HREF}
                   className={cn(
                     "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
@@ -182,6 +201,19 @@ export function SiteHeader() {
                 >
                   Leaderboard
                 </Link>
+                {user?.role === "ADMIN" ? (
+                  <Link
+                    href="/admin/accounts"
+                    className={cn(
+                      "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                      pathname.startsWith("/admin")
+                        ? "bg-jade-soft text-jade-accent"
+                        : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
+                    )}
+                  >
+                    Admin
+                  </Link>
+                ) : null}
 
                 <div className="relative shrink-0" ref={clubRef}>
                   <button
@@ -206,7 +238,7 @@ export function SiteHeader() {
                         const Icon = item.icon
                         return (
                           <Link
-                            key={item.href}
+                            key={item.id}
                             href={item.href}
                             onClick={() => setClubOpen(false)}
                             className="tap-press flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-jade-soft"
@@ -252,7 +284,7 @@ export function SiteHeader() {
                         const Icon = item.icon
                         return (
                           <Link
-                            key={item.href}
+                            key={item.id}
                             href={item.href}
                             onClick={() => setToolsOpen(false)}
                             className="tap-press flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-jade-soft"
@@ -286,7 +318,7 @@ export function SiteHeader() {
                 className="inline-flex max-w-full flex-wrap items-center justify-center gap-0.5 rounded-full border border-[#102A20]/10 bg-white/80 p-1 shadow-[0_4px_20px_-6px_rgba(16,42,32,0.12)]"
               >
                 <Link
-                  href="/"
+                  href={homeHref}
                   className={cn(
                     "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     homeActive
@@ -359,7 +391,7 @@ export function SiteHeader() {
                   </Link>
                 ) : (
                   <Link
-                    href="/session/new"
+                    href="/schedule?create=1"
                     className="tap-press hidden h-10 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] md:inline-flex"
                   >
                     + New Table
@@ -432,7 +464,12 @@ export function SiteHeader() {
         </div>
       </header>
 
-      <SearchPlayerModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SearchPlayerModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        isPro={Boolean(user?.isPro || user?.role === "ADMIN")}
+        accountName={user?.name}
+      />
     </>
   )
 }

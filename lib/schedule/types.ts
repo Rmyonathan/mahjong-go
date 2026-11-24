@@ -8,7 +8,8 @@ export const DEFAULT_MEET_FEE_IDR = 50_000
 export { DEFAULT_PRO_EARLY_BIRD_HOURS } from "@/lib/membership"
 
 export type ApiMeetBoardType = "BEGINNER" | "ADVANCED" | "MCR" | "GUIDED"
-export type ApiMeetStatus = "OPEN" | "FULL" | "COMPLETED"
+export type ApiScoringRuleset = "CHICKEN" | "JADE_HK"
+export type ApiMeetStatus = "OPEN" | "FULL" | "COMPLETED" | "CANCELLED"
 export type ApiBookingStatus = "PENDING" | "CONFIRMED" | "WAITLIST" | "CANCELLED"
 export type ApiPaymentMethod = "QRIS" | "VENUE"
 
@@ -52,6 +53,7 @@ export interface ApiMeet {
   endsAt: string
   location: string
   boardType: ApiMeetBoardType
+  scoringRuleset: ApiScoringRuleset
   maxSeats: number
   tables: number
   feeIdr: number

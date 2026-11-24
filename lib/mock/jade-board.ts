@@ -7,13 +7,14 @@ import {
   EXPERIENCE_LEVELS,
   getPlayer,
   PLAYERS,
-  SKILL_TIERS,
-  skillForPoints,
   experienceForGames,
   type JadePlayer,
   type ExperienceLevel,
-  type SkillTier,
 } from "@/lib/mock/jade-data"
+import {
+  eloStampFromRating,
+  SKILL_START_RATING,
+} from "@/lib/mock/jade-levels"
 import { TILE_BY_ID } from "@/lib/mahjong/tiles"
 
 function tileId(id: string): string {
@@ -57,9 +58,16 @@ export interface BoardStanding {
   discardWins: number
 }
 
+/** Elo ladder stamp shown on board rows (Silver II, Gold I, …). */
+export type BoardSkillStamp = {
+  id: string
+  name: string
+  summary: string
+}
+
 export interface BoardStandingRow extends BoardStanding {
   player: JadePlayer
-  skillTier: SkillTier
+  skillTier: BoardSkillStamp
   experienceLevel: ExperienceLevel
   /** Active Pro membership (or admin) linked to this player. */
   isPro?: boolean
@@ -92,6 +100,10 @@ export interface SessionHand {
   tileIds: string[]
   winningTileId: string
   bonusTileIds: string[]
+  /** Absolute hand value (winner take), for share cards. */
+  points?: number
+  /** True when the hand was a wall draw / no winner. */
+  isDraw?: boolean
   /** Point delta for every seat at the table, keyed by playerId. */
   deltas: Record<string, number>
 }
@@ -986,10 +998,15 @@ export function getBoardStandings(board?: BoardTier | "all"): BoardStandingRow[]
     !board || board === "all" ? true : row.board === board,
   ).map((standing) => {
     const player = getPlayer(standing.playerId)
+    // Mock has no Elo column — approximate from season points for UI fallback.
+    const approxRating = Math.min(
+      2500,
+      Math.max(900, SKILL_START_RATING + Math.round(standing.points / 40) - 200),
+    )
     return {
       ...standing,
       player,
-      skillTier: skillForPoints(standing.points),
+      skillTier: eloStampFromRating(approxRating),
       experienceLevel:
         EXPERIENCE_LEVELS.find((level) => level.id === player.experienceLevelId) ??
         experienceForGames(standing.games),
@@ -1019,4 +1036,3 @@ export function winRateLabel(rate: number) {
 
 // Keep PLAYERS referenced so tree-shaking never drops player checks in tests.
 void PLAYERS
-void SKILL_TIERS

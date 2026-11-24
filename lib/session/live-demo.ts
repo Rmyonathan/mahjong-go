@@ -1,4 +1,5 @@
 import type { FormResult } from "@/lib/mock/jade-board"
+import { getJadeSeatDeltas } from "@/lib/mahjong/payout"
 
 export type LiveBoard = "beginner" | "advanced" | "mcr"
 export type LiveWind = "east" | "south" | "west" | "north"
@@ -6,16 +7,19 @@ export type WinMethod = "self-draw" | "discard"
 
 export const LIVE_STORAGE_KEY = "jade_live_session"
 
-// EDIT HERE — default session title on /session/new
+// EDIT HERE — default session title when going live from a meet
 export const DEFAULT_SESSION_TITLE = "Friday Night Jade Table"
 
 // EDIT HERE — starting net for every seat when a table opens
 export const STARTING_POINTS = 0
 
-// EDIT HERE — base unit for payout math (fan × unit)
-export const POINT_UNIT = 400
+/**
+ * @deprecated Jade Miles are absolute from FAAN_TO_BASE_POINTS (no × unit).
+ * Kept so older UI copy compiles; always 1.
+ */
+export const POINT_UNIT = 1
 
-// EDIT HERE — self-draw multiplies the winner’s take (losers split)
+// EDIT HERE — unused under Jade §6 (self-draw is fixed 6×B)
 export const SELF_DRAW_MULTIPLIER = 1
 
 export const WIND_META: Record<
@@ -162,6 +166,8 @@ export interface LiveSession {
   id: string
   title: string
   board: LiveBoard
+  /** Chicken Hand vs Jade HK — same presets as /scan */
+  scoringRuleset?: "chicken" | "jade-hk"
   seatCount: 3 | 4
   seats: LiveSeat[]
   hands: LiveHand[]
@@ -172,6 +178,10 @@ export interface LiveSession {
   status: "live" | "finished"
   handNumber: number
   dealerSeatIndex: number
+  /** Free / Pro / Club auto-end metadata (from API serialize). */
+  durationTier?: "club" | "pro" | "free"
+  maxHours?: number | null
+  expiresAt?: string | null
 }
 
 export interface SessionSetupInput {
@@ -218,21 +228,45 @@ export function createLiveSession(input: SessionSetupInput): LiveSession {
   }
 }
 
-/** Demo payout: discard → dealt-in pays all; self-draw → losers split. */
+/**
+ * Zero-sum seat deltas.
+ * Prefer passing `totalFan` so Jade §6 math (2B/1B/1B vs 2B×3) is used.
+ * If only `winnerPoints` is set (legacy), falls back to equal split / full shooter.
+ */
 export function computePayoutDeltas(options: {
   seatCount: number
   winnerSeatIndex: number
   method: WinMethod
   dealtBySeatIndex: number | null
-  winnerPoints: number
+  winnerPoints?: number
+  /** When set, uses official Jade HK payout from Faan. */
+  totalFan?: number
 }): number[] {
-  const { seatCount, winnerSeatIndex, method, dealtBySeatIndex, winnerPoints } =
-    options
+  const {
+    seatCount,
+    winnerSeatIndex,
+    method,
+    dealtBySeatIndex,
+    winnerPoints,
+    totalFan,
+  } = options
+
+  if (typeof totalFan === "number") {
+    return getJadeSeatDeltas({
+      seatCount,
+      winnerSeatIndex,
+      method,
+      dealtBySeatIndex,
+      totalFan,
+    })
+  }
+
   const deltas = Array.from({ length: seatCount }, () => 0)
-  const win = Math.max(0, Math.round(winnerPoints))
+  const win = Math.max(0, Math.round(winnerPoints ?? 0))
   deltas[winnerSeatIndex] = win
 
   if (method === "discard" && dealtBySeatIndex != null) {
+    // Legacy full-shooter fallback
     deltas[dealtBySeatIndex] = -win
     return deltas
   }

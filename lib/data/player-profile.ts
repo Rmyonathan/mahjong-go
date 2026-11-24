@@ -1,10 +1,13 @@
 import { prisma } from "@/lib/db"
 import {
-  skillForPoints,
   type ExperienceLevel,
   type JadePlayer,
 } from "@/lib/mock/jade-data"
 import { formatSignedPoints, winRateLabel } from "@/lib/mock/jade-board"
+import {
+  skillBandFromRating,
+  type SkillSubrank,
+} from "@/lib/mock/jade-levels"
 
 export type PlaystyleArchetype = {
   id: string
@@ -46,11 +49,18 @@ export type PlayerProInsights = {
 export type PlayerProfile = {
   player: JadePlayer
   experienceLevel: ExperienceLevel
+  /** Elo ladder label, e.g. "Silver II" (not season Raja Meja). */
   skillTierName: string
   skillRating: number
+  eloTierId: string
+  eloSubrank: SkillSubrank
   experienceXp: number
   experienceLevelNumber: number
   experienceBandTitle: string
+  /** XP into current LV / XP needed for next LV */
+  xpIntoLevel: number
+  xpForNextLevel: number
+  pctToNextLevel: number
   seasonPoints: number
   wins: number
   games: number
@@ -371,10 +381,11 @@ export async function getPlayerProfile(
   const winRate =
     standing?.winRate ?? (games > 0 ? wins / Math.max(games, 1) : 0)
 
+  // EDIT HERE — max hands kept for profile “See all”
+  const RECENT_HANDS_CAP = 40
   const recentHands: RecentHandSummary[] = []
   for (const seat of seats) {
     for (const hand of seat.session.hands) {
-      if (recentHands.length >= 8) break
       let role: RecentHandSummary["role"] = "played"
       if (hand.winnerSeatId === seat.id) role = "win"
       else if (hand.dealtInSeatId === seat.id) role = "dealt-in"
@@ -391,7 +402,6 @@ export async function getPlayerProfile(
         at: hand.createdAt.toISOString(),
       })
     }
-    if (recentHands.length >= 8) break
   }
 
   recentHands.sort(
@@ -417,14 +427,21 @@ export async function getPlayerProfile(
 
   const proInsights = await computeProInsights(mySeatIds)
 
+  const elo = skillBandFromRating(player.skillRating)
+
   return {
     player: jade,
     experienceLevel,
-    skillTierName: skillForPoints(seasonPoints || player.skillRating).name,
+    skillTierName: elo.label,
     skillRating: player.skillRating,
+    eloTierId: elo.tier.id,
+    eloSubrank: elo.subrank,
     experienceXp: player.experienceXp,
     experienceLevelNumber: xpProgress.level,
     experienceBandTitle: xpProgress.band.title,
+    xpIntoLevel: xpProgress.xpIntoLevel,
+    xpForNextLevel: xpProgress.xpForNextLevel,
+    pctToNextLevel: xpProgress.pctToNext,
     seasonPoints,
     wins,
     games,
@@ -434,7 +451,7 @@ export async function getPlayerProfile(
     discardWins,
     dealtIn,
     playstyle,
-    recentHands: recentHands.slice(0, 8),
+    recentHands: recentHands.slice(0, RECENT_HANDS_CAP),
     proInsights,
   }
 }
