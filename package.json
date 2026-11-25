@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate",
+    "postinstall": "node -e \"try{require('fs').accessSync('prisma/schema.prisma')}catch{console.log('skip prisma generate (schema not in this install layer)');process.exit(0)};require('child_process').spawnSync('npx',['prisma','generate'],{stdio:'inherit',shell:true,env:process.env}).status&&process.exit(1)\"",
     "icons:pwa": "node scripts/generate-pwa-icons.mjs",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
