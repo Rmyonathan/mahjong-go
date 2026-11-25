@@ -65,13 +65,18 @@ function LiveSessionInner() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [isCaptain, setIsCaptain] = useState(false)
+  const [canLogHands, setCanLogHands] = useState(false)
 
   const refresh = useCallback(async (id: string) => {
     const response = await fetch(`/api/sessions/${id}`)
     const data = (await response.json()) as {
       error?: string
       session?: LiveSession & { captainUserId?: string }
-      viewer?: { id: string; isCaptain?: boolean } | null
+      viewer?: {
+        id: string
+        isCaptain?: boolean
+        canLogHands?: boolean
+      } | null
     }
     if (response.status === 401) {
       router.replace(
@@ -84,6 +89,7 @@ function LiveSessionInner() {
     }
     setSession(data.session)
     setIsCaptain(Boolean(data.viewer?.isCaptain))
+    setCanLogHands(Boolean(data.viewer?.canLogHands))
     return data.session
   }, [router])
 
@@ -211,6 +217,17 @@ function LiveSessionInner() {
 
   async function onEnd() {
     if (!sessionId || busy) return
+    const tournamentId =
+      (session as LiveSession & { tournamentId?: string | null }).tournamentId ??
+      null
+    if (tournamentId) {
+      const ok = window.confirm(
+        "End this tournament table log?\n\n" +
+          "Logged hands stay on tournament standings. Other tables in the round can still be playing.\n\n" +
+          "You can reopen this table from the tournament hub if you ended by mistake.",
+      )
+      if (!ok) return
+    }
     setBusy(true)
     setActionError(null)
     try {
@@ -220,14 +237,32 @@ function LiveSessionInner() {
       const data = (await response.json()) as {
         error?: string
         session?: LiveSession
+        tournamentId?: string | null
       }
       if (!response.ok || !data.session) {
-        setActionError(data.error ?? "Could not end session")
+        setActionError(
+          data.error ??
+            (tournamentId
+              ? "Could not close table log — try again from the tournament hub"
+              : "Could not end session"),
+        )
         return
       }
-      setSession(data.session)
+      setSession({
+        ...data.session,
+        tournamentId:
+          data.tournamentId ??
+          tournamentId ??
+          (data.session as LiveSession & { tournamentId?: string | null })
+            .tournamentId ??
+          null,
+      } as LiveSession & { tournamentId?: string | null })
     } catch {
-      setActionError("Network error ending session")
+      setActionError(
+        tournamentId
+          ? "Network error — return to the tournament hub and retry"
+          : "Network error ending session",
+      )
     } finally {
       setBusy(false)
     }
@@ -277,11 +312,17 @@ function LiveSessionInner() {
     )
   }
 
+  const tournamentId =
+    (session as LiveSession & { tournamentId?: string | null }).tournamentId ??
+    null
+  const canControlTable = isCaptain || canLogHands
+
   if (session.status === "finished") {
     return (
       <FinalStandings
         session={session}
         isPro={isPro}
+        tournamentId={tournamentId}
         onShare={shareStandings}
       />
     )
@@ -290,11 +331,11 @@ function LiveSessionInner() {
   return (
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
       <Link
-        href="/live"
+        href={tournamentId ? `/tournaments/${tournamentId}` : "/live"}
         className="tap-press mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] text-jade-accent"
       >
         <ChevronLeft className="size-4" aria-hidden />
-        Live tables
+        {tournamentId ? "Tournament hub" : "Live tables"}
       </Link>
       <div className="jade-card flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -339,11 +380,11 @@ function LiveSessionInner() {
           <p className="mr-auto font-serif text-xl sm:mr-2">{session.title}</p>
           <button
             type="button"
-            disabled={busy || !isCaptain}
+            disabled={busy || !canControlTable}
             onClick={() => void onEnd()}
             className="border-[2px] border-jade-red px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-red disabled:opacity-40"
           >
-            End session
+            {tournamentId ? "End table log" : "End session"}
           </button>
         </div>
       </div>
@@ -412,7 +453,7 @@ function LiveSessionInner() {
         <div className="relative inline-flex min-w-[16rem] flex-1 sm:flex-none">
           <button
             type="button"
-            disabled={busy || !isCaptain}
+            disabled={busy || !canControlTable}
             onClick={() => setHandLogOpen(true)}
             className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
           >
@@ -421,7 +462,7 @@ function LiveSessionInner() {
         </div>
         <button
           type="button"
-          disabled={busy || !isCaptain}
+          disabled={busy || !canControlTable}
           onClick={() => setCameraScanOpen(true)}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
@@ -429,7 +470,7 @@ function LiveSessionInner() {
         </button>
         <button
           type="button"
-          disabled={busy || !isCaptain}
+          disabled={busy || !canControlTable}
           onClick={onDraw}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
@@ -437,9 +478,9 @@ function LiveSessionInner() {
         </button>
       </section>
 
-      {!isCaptain ? (
+      {!canControlTable ? (
         <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-          View only — table captain logs hands
+          View only — wasit or table captain logs hands
         </p>
       ) : null}
 
@@ -692,10 +733,12 @@ function LiveScoreRace({ session }: { session: LiveSession }) {
 function FinalStandings({
   session,
   isPro,
+  tournamentId,
   onShare,
 }: {
   session: LiveSession
   isPro: boolean
+  tournamentId: string | null
   onShare: () => void
 }) {
   const ranked = [...session.seats]
@@ -709,7 +752,9 @@ function FinalStandings({
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
       <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-        Session closed · Leaderboard updated
+        {tournamentId
+          ? "Table log closed · hands saved to tournament standings"
+          : "Session closed · Leaderboard updated"}
       </p>
       <h1 className="mt-3 font-serif text-5xl uppercase leading-[0.9] sm:text-6xl">
         Final standings
@@ -780,6 +825,14 @@ function FinalStandings({
       </ol>
 
       <div className="mt-8 flex flex-wrap gap-3">
+        {tournamentId ? (
+          <Link
+            href={`/tournaments/${tournamentId}?tab=tables`}
+            className="scan-cta inline-flex h-11 items-center px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+          >
+            ← Back to tournament · Live tables
+          </Link>
+        ) : null}
         <SessionNewspaperButton session={session} />
         <Link
           href={`/session/${session.id}`}
@@ -795,12 +848,14 @@ function FinalStandings({
           <Share2 className="size-4" />
           Share text standings
         </button>
-        <Link
-          href="/schedule?create=1"
-          className="inline-flex h-11 items-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
-        >
-          New session
-        </Link>
+        {!tournamentId ? (
+          <Link
+            href="/schedule?create=1"
+            className="inline-flex h-11 items-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em]"
+          >
+            New session
+          </Link>
+        ) : null}
       </div>
 
       <div className="mt-8">

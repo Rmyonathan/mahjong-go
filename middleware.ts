@@ -21,6 +21,7 @@ const PUBLIC_PREFIXES = [
   "/puzzle",
   "/hk",
   "/learn",
+  "/tournaments",
 ]
 
 /** Public APIs guests need for browse pages (mutations still auth-check in-route). */
@@ -32,6 +33,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/schedule",
   "/api/puzzle/today",
   "/api/scan", // Gemini tile detect for /scan calculator (guests OK)
+  "/api/tournaments",
 ]
 
 function isPublicPath(pathname: string) {

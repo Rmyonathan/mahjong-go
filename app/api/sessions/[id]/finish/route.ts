@@ -6,6 +6,7 @@ import {
   getGameSession,
   serializeSession,
 } from "@/lib/session/service"
+import { userCanLogLinkedTournamentSession } from "@/lib/tournaments/session-access"
 
 export async function POST(
   _request: Request,
@@ -26,16 +27,31 @@ export async function POST(
 
   const isCaptain = user.id === existing.captainUserId
   const isAdmin = user.role === "ADMIN"
-  if (!isCaptain && !isAdmin) {
+  const tournamentWasit = await userCanLogLinkedTournamentSession(
+    user.id,
+    user.role,
+    existing.tournamentTableId,
+  )
+  if (!isCaptain && !isAdmin && !tournamentWasit) {
     return NextResponse.json(
-      { error: "Only the table captain can finish the session" },
+      {
+        error:
+          existing.tournamentTableId
+            ? "Only wasit or table captain can end this tournament table log"
+            : "Only the table captain can finish the session",
+      },
       { status: 403 },
     )
   }
 
   try {
+    const tournamentId =
+      existing.tournamentTable?.tournamentId ?? null
     const session = await finishGameSession(id)
-    return NextResponse.json({ session: serializeSession(session) })
+    return NextResponse.json({
+      session: serializeSession(session),
+      tournamentId,
+    })
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Could not finish session"

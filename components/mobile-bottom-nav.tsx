@@ -17,6 +17,8 @@ import {
   ADMIN_MORE_LINKS,
   CLUB_LEARN_LINKS,
   DASHBOARD_HREF,
+  LEADERBOARD_HREF,
+  MORE_TOURNAMENTS_LINK,
   MORE_PROFILE_LINK,
   TOOL_LINKS,
 } from "@/lib/nav"
@@ -44,12 +46,14 @@ function MobileBottomNavInner() {
   const [scanModalOpen, setScanModalOpen] = useState(false)
   const [meetModalOpen, setMeetModalOpen] = useState(false)
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [tournamentModalOpen, setTournamentModalOpen] = useState(false)
 
   const hideChrome =
     tvMode ||
     scanModalOpen ||
     meetModalOpen ||
     inviteModalOpen ||
+    tournamentModalOpen ||
     pathname.startsWith("/calculator") ||
     pathname.startsWith("/hk") ||
     pathname.startsWith("/admin")
@@ -59,6 +63,7 @@ function MobileBottomNavInner() {
       setScanModalOpen(document.body.dataset.scanModal === "1")
       setMeetModalOpen(document.body.dataset.createMeetModal === "1")
       setInviteModalOpen(document.body.dataset.inviteModal === "1")
+      setTournamentModalOpen(document.body.dataset.tournamentModal === "1")
     }
     sync()
     const observer = new MutationObserver(sync)
@@ -68,6 +73,7 @@ function MobileBottomNavInner() {
         "data-scan-modal",
         "data-create-meet-modal",
         "data-invite-modal",
+        "data-tournament-modal",
       ],
     })
     return () => observer.disconnect()
@@ -154,9 +160,12 @@ function MobileBottomNavInner() {
     (!loggedIn && pathname === "/")
   const scheduleActive =
     pathname === "/schedule" || pathname.startsWith("/schedule/")
-  const ranksActive =
-    pathname === "/leaderboard" || pathname.startsWith("/leaderboard/")
+  const leaderboardActive =
+    pathname === LEADERBOARD_HREF ||
+    pathname.startsWith(`${LEADERBOARD_HREF}/`)
   const moreActive =
+    pathname === MORE_TOURNAMENTS_LINK.href ||
+    pathname.startsWith(`${MORE_TOURNAMENTS_LINK.href}/`) ||
     pathname === "/me" ||
     pathname.startsWith("/players/") ||
     CLUB_LEARN_LINKS.some(
@@ -169,7 +178,7 @@ function MobileBottomNavInner() {
     ) ||
     (isAdmin && pathname.startsWith("/admin"))
 
-  // Guests: Home · Schedule · Ranks · Sign In (no elevated +)
+  // Guests: Home · Schedule · Leaderboard · Sign In
   if (!loggedIn) {
     return (
       <nav
@@ -186,9 +195,9 @@ function MobileBottomNavInner() {
             icon={CalendarDays}
           />
           <TabLink
-            href="/leaderboard"
+            href={LEADERBOARD_HREF}
             label="Ranks"
-            active={ranksActive}
+            active={leaderboardActive}
             icon={Trophy}
           />
           <TabLink
@@ -239,9 +248,9 @@ function MobileBottomNavInner() {
           </div>
 
           <TabLink
-            href="/leaderboard"
+            href={LEADERBOARD_HREF}
             label="Ranks"
-            active={ranksActive}
+            active={leaderboardActive}
             icon={Trophy}
           />
 
@@ -298,7 +307,13 @@ function MobileBottomNavInner() {
 
       {moreOpen ? (
         <Sheet onClose={() => setMoreOpen(false)} title="More">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          <SheetCard
+            href={MORE_TOURNAMENTS_LINK.href}
+            title={MORE_TOURNAMENTS_LINK.label}
+            subtitle={MORE_TOURNAMENTS_LINK.subtitle}
+            onNavigate={() => setMoreOpen(false)}
+          />
+          <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             Club &amp; Learn
           </p>
           <div className="mt-2 grid grid-cols-2 gap-3">

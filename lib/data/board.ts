@@ -6,12 +6,6 @@ import { eloStampFromRating } from "@/lib/mock/jade-levels"
 import {
   ACTIVE_SEASON,
   BOARD_STANDINGS,
-  RECENT_SESSIONS,
-  SEASON_KPI,
-  SESSION_DETAILS,
-  WIN_METHODS_SEASON,
-  getBoardStandings,
-  getSessionDetail,
   type BoardStandingRow,
   type FormResult as MockForm,
   type RecentSessionCard,
@@ -55,12 +49,30 @@ function boardFromMeet(boardType: MeetBoardType): BoardTier {
   return "advanced"
 }
 
-export async function getActiveSeason(): Promise<SeasonMeta | null> {
-  const finished = await countFinishedSessions()
-  if (finished === 0) return ACTIVE_SEASON
+const EMPTY_SEASON_KPI: SeasonKpi = {
+  sessionsPlayed: 0,
+  gamesPlayed: 0,
+  hoursAtTable: 0,
+  biggestHand: { playerId: "", points: 0, combo: "—" },
+  topCombo: { name: "—", count: 0 },
+  hotStreak: { playerId: "", streak: 0 },
+}
 
+export async function getActiveSeason(): Promise<SeasonMeta | null> {
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return ACTIVE_SEASON
+  if (!season) return null
+
+  const finished = await countFinishedSessions()
+  if (finished === 0) {
+    return {
+      id: season.id,
+      label: season.label,
+      rangeLabel: season.rangeLabel,
+      sessionsPlayed: 0,
+      gamesPlayed: 0,
+      hoursAtTable: 0,
+    }
+  }
 
   const [sessionCount, handCount] = await Promise.all([
     prisma.gameSession.count({ where: { status: "FINISHED" } }),
@@ -78,11 +90,11 @@ export async function getActiveSeason(): Promise<SeasonMeta | null> {
 }
 
 export async function getSeasonKpi(): Promise<SeasonKpi | null> {
-  const finished = await countFinishedSessions()
-  if (finished === 0) return SEASON_KPI
-
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return SEASON_KPI
+  if (!season) return null
+
+  const finished = await countFinishedSessions()
+  if (finished === 0) return EMPTY_SEASON_KPI
 
   const [sessionCount, handCount, biggest, topStanding] = await Promise.all([
     prisma.gameSession.count({ where: { status: "FINISHED" } }),
@@ -143,10 +155,10 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
 
 export async function getWinMethodsSeason() {
   const finished = await countFinishedSessions()
-  if (finished === 0) return WIN_METHODS_SEASON
+  if (finished === 0) return { selfDraw: 0, discard: 0 }
 
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return WIN_METHODS_SEASON
+  if (!season) return { selfDraw: 0, discard: 0 }
   return { selfDraw: season.selfDrawWins, discard: season.discardWins }
 }
 
@@ -154,12 +166,10 @@ export async function getDbBoardStandings(
   board: BoardTier | "all" = "advanced",
 ): Promise<BoardStandingRow[]> {
   const finished = await countFinishedSessions()
-  if (finished === 0) {
-    return getBoardStandings(board === "all" ? "all" : board)
-  }
+  if (finished === 0) return []
 
   const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return getBoardStandings(board === "all" ? "all" : board)
+  if (!season) return []
 
   // Live mode: standings come only from finished GameSessions (never seed mock).
   const liveSeats = await prisma.sessionSeat.findMany({
@@ -257,7 +267,7 @@ export async function getPlayersByIds(ids: string[]) {
 
 export async function getRecentSessions(): Promise<RecentSessionCard[]> {
   const finished = await countFinishedSessions()
-  if (finished === 0) return RECENT_SESSIONS
+  if (finished === 0) return []
 
   const sessions = await prisma.gameSession.findMany({
     where: { status: "FINISHED" },
@@ -270,8 +280,6 @@ export async function getRecentSessions(): Promise<RecentSessionCard[]> {
     orderBy: { startedAt: "desc" },
     take: 12,
   })
-
-  if (sessions.length === 0) return RECENT_SESSIONS
 
   return sessions.map((session) => {
     const top = session.seats[0]
@@ -320,11 +328,11 @@ export async function getDbSessionDetail(
   })
 
   if (!session) {
-    return getSessionDetail(id) ?? SESSION_DETAILS[id] ?? null
+    return null
   }
 
   if (session.status !== "FINISHED" && session.hands.length === 0) {
-    return getSessionDetail(id)
+    return null
   }
 
   const seats = session.seats

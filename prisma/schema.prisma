@@ -108,6 +108,11 @@ model User {
   puzzleVotes         PuzzleVote[]
   coachingBookings    CoachingBooking[]
   bountyClaims        BountyClaim[]
+  createdTournaments  Tournament[]      @relation("TournamentCreator")
+  tournamentEntries   TournamentEntry[]
+  panitiaTournaments  Tournament[]      @relation("TournamentPanitia")
+  wasitTournaments    Tournament[]      @relation("TournamentWasit")
+  tournamentStaff     TournamentStaff[]
 }
 
 model Player {
@@ -186,9 +191,12 @@ model GameSession {
   /// Chicken Hand vs Jade HK Modified — same engine as /scan
   scoringRuleset ScoringRuleset @default(JADE_HK)
   status        SessionStatus  @default(LIVE)
-  meetId        String?
-  meet          Meet?          @relation(fields: [meetId], references: [id], onDelete: SetNull)
-  captainUserId String
+  meetId            String?
+  meet              Meet?             @relation(fields: [meetId], references: [id], onDelete: SetNull)
+  /// When set, hands also sync to tournament standings (wasit / panitia live view).
+  tournamentTableId String?           @unique
+  tournamentTable   TournamentTable?    @relation("TournamentTableLiveSession", fields: [tournamentTableId], references: [id], onDelete: SetNull)
+  captainUserId     String
   captain       User           @relation("SessionCaptain", fields: [captainUserId], references: [id])
   startedAt     DateTime       @default(now())
   endedAt       DateTime?
@@ -203,14 +211,15 @@ model GameSession {
 }
 
 model SessionSeat {
-  id           String      @id @default(cuid())
-  sessionId    String
-  session      GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId       String?
-  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  guestName    String?
-  wind         SeatWind
-  seatOrder    Int
+  id                String           @id @default(cuid())
+  sessionId         String
+  session           GameSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId            String?
+  user              User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tournamentEntryId String?
+  guestName         String?
+  wind              SeatWind
+  seatOrder         Int
   netPoints    Int         @default(0)
   wins         Int         @default(0)
   selfDraws    Int         @default(0)
@@ -357,4 +366,160 @@ model WeeklyBountyWeek {
   source      String   @default("default")
   generatedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+enum TournamentFormat {
+  POINTS_RACE
+  KNOCKOUT
+  HYBRID_KO
+}
+
+enum TournamentStatus {
+  REGISTRATION
+  LIVE
+  COMPLETED
+}
+
+enum TournamentEntryStatus {
+  REGISTERED
+  ACTIVE
+  ELIMINATED
+  REVIVED
+  CHAMPION
+}
+
+enum TournamentTableStatus {
+  WAITING
+  LIVE
+  FINISHED
+}
+
+enum TournamentStaffRole {
+  PANITIA
+  WASIT
+}
+
+/// Jade house tournament (admin-run; Zung Jung / club formats).
+model Tournament {
+  id                   String           @id @default(cuid())
+  title                String
+  subtitle             String           @default("")
+  format               TournamentFormat @default(POINTS_RACE)
+  status               TournamentStatus @default(REGISTRATION)
+  entryFeeIdr          Int              @default(0)
+  prizePoolText        String           @default("")
+  maxPlayers           Int              @default(16)
+  revivalEnabled       Boolean          @default(true)
+  revivalFeeIdr        Int              @default(0)
+  maxRevivalsPerPlayer Int              @default(1)
+  /// EDIT HERE — KO: how many players advance per table (1 or 2) when closing a round.
+  koAdvancePerTable    Int              @default(1)
+  currentRound         Int              @default(1)
+  rulesPdfUrl          String?
+  rulesPdfName         String?
+  /// Panitia (committee) — visible on hub; may co-manage with admin/creator.
+  panitiaUserId        String?
+  panitiaUser          User?            @relation("TournamentPanitia", fields: [panitiaUserId], references: [id], onDelete: SetNull)
+  /// Wasit (referee) — may scan / log winning hands at live tables.
+  wasitUserId          String?
+  wasitUser            User?            @relation("TournamentWasit", fields: [wasitUserId], references: [id], onDelete: SetNull)
+  createdById          String
+  createdBy            User             @relation("TournamentCreator", fields: [createdById], references: [id])
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  entries TournamentEntry[]
+  tables  TournamentTable[]
+  hands   TournamentHand[]
+  staff   TournamentStaff[]
+
+  @@index([status, createdAt])
+}
+
+model TournamentStaff {
+  id           String              @id @default(cuid())
+  tournamentId String
+  tournament   Tournament          @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         TournamentStaffRole
+  createdAt    DateTime            @default(now())
+
+  @@unique([tournamentId, userId, role])
+  @@index([tournamentId, role])
+}
+
+model TournamentEntry {
+  id               String                @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  playerName       String
+  status           TournamentEntryStatus @default(REGISTERED)
+  score            Int                   @default(0)
+  revivalsUsed     Int                   @default(0)
+  eliminatedRound  Int?
+  /// 1 = champion, 2 = runner-up, 3 = third … set when the final table closes.
+  finishPlace      Int?
+  createdAt        DateTime              @default(now())
+
+  wonHands   TournamentHand[] @relation("TournamentHandWinner")
+  dealtHands TournamentHand[] @relation("TournamentHandDealtIn")
+  seat1Of    TournamentTable[] @relation("TableSeat1")
+  seat2Of    TournamentTable[] @relation("TableSeat2")
+  seat3Of    TournamentTable[] @relation("TableSeat3")
+  seat4Of    TournamentTable[] @relation("TableSeat4")
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, status])
+}
+
+model TournamentTable {
+  id               String                @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  roundNumber      Int
+  tableNumber      Int
+  isKnockoutMatch  Boolean               @default(false)
+  status           TournamentTableStatus @default(WAITING)
+  seat1EntryId     String?
+  seat1Entry       TournamentEntry?      @relation("TableSeat1", fields: [seat1EntryId], references: [id], onDelete: SetNull)
+  seat2EntryId     String?
+  seat2Entry       TournamentEntry?      @relation("TableSeat2", fields: [seat2EntryId], references: [id], onDelete: SetNull)
+  seat3EntryId     String?
+  seat3Entry       TournamentEntry?      @relation("TableSeat3", fields: [seat3EntryId], references: [id], onDelete: SetNull)
+  seat4EntryId     String?
+  seat4Entry       TournamentEntry?      @relation("TableSeat4", fields: [seat4EntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime              @default(now())
+  /// JSON array of finished `GameSession` ids for this table (live logs / replay).
+  sessionLogIds    String                @default("[]")
+
+  hands       TournamentHand[]
+  liveSession GameSession? @relation("TournamentTableLiveSession")
+
+  @@unique([tournamentId, roundNumber, tableNumber])
+  @@index([tournamentId, status])
+}
+
+model TournamentHand {
+  id              String        @id @default(cuid())
+  tournamentId    String
+  tournament      Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tableId         String
+  table           TournamentTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  roundNumber     Int
+  handNumber      Int
+  winnerEntryId   String?
+  winnerEntry     TournamentEntry? @relation("TournamentHandWinner", fields: [winnerEntryId], references: [id], onDelete: SetNull)
+  dealtInEntryId  String?
+  dealtInEntry    TournamentEntry? @relation("TournamentHandDealtIn", fields: [dealtInEntryId], references: [id], onDelete: SetNull)
+  winMethod       HandWinMethod @default(DISCARD)
+  points          Int           @default(0)
+  combosSummary   String?
+  deltasJson      String        @default("[]")
+  createdAt       DateTime      @default(now())
+
+  @@unique([tableId, handNumber])
+  @@index([tournamentId, roundNumber])
 }

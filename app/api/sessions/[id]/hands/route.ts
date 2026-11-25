@@ -7,6 +7,8 @@ import {
   serializeSession,
   type LogHandInput,
 } from "@/lib/session/service"
+import { userCanLogLinkedTournamentSession } from "@/lib/tournaments/session-access"
+import { syncTournamentHandFromSession } from "@/lib/tournaments/sync-session-hand"
 
 type HandBody = Partial<LogHandInput> & {
   method?: LogHandInput["method"]
@@ -31,9 +33,14 @@ export async function POST(
 
   const isCaptain = user.id === existing.captainUserId
   const isAdmin = user.role === "ADMIN"
-  if (!isCaptain && !isAdmin) {
+  const tournamentWasit = await userCanLogLinkedTournamentSession(
+    user.id,
+    user.role,
+    existing.tournamentTableId,
+  )
+  if (!isCaptain && !isAdmin && !tournamentWasit) {
     return NextResponse.json(
-      { error: "Only the table captain can log hands" },
+      { error: "Only the table captain or tournament wasit can log hands" },
       { status: 403 },
     )
   }
@@ -43,7 +50,7 @@ export async function POST(
   const isDraw = method === "draw" || body.winnerSeatIndex === -1
 
   try {
-    await logHand(id, {
+    const handInput: LogHandInput = {
       winnerSeatIndex: isDraw ? -1 : Number(body.winnerSeatIndex),
       method: isDraw ? "draw" : method,
       dealtBySeatIndex:
@@ -54,7 +61,14 @@ export async function POST(
       winningTileId: body.winningTileId ?? "",
       deltas: Array.isArray(body.deltas) ? body.deltas : undefined,
       demoHandId: body.demoHandId,
-    })
+    }
+    await logHand(id, handInput)
+    if (existing.tournamentTableId) {
+      await syncTournamentHandFromSession(
+        existing.tournamentTableId,
+        handInput,
+      )
+    }
     const session = await getGameSession(id)
     return NextResponse.json({
       session: session ? serializeSession(session) : null,

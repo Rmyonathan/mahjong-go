@@ -54,7 +54,6 @@ function readParam(value: string | string[] | undefined) {
 function readBoard(value: string, live: boolean): BoardTier | "all" {
   if (value === "beginner" || value === "advanced" || value === "mcr") return value
   if (value === "all") return "all"
-  // Live club board defaults to every table; seed demo still opens on advanced
   return live ? "all" : "advanced"
 }
 
@@ -471,6 +470,11 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
           </p>
           <div className="jade-divider mt-3" />
           <ol className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3">
+            {visibleSessions.length === 0 ? (
+              <li className="jade-card px-4 py-8 text-center text-sm text-muted-foreground">
+                No finished tables yet — end a live session to appear here.
+              </li>
+            ) : null}
             {visibleSessions.map((entry) => {
               const winner = playerMap.get(entry.winnerId)
               const body = (

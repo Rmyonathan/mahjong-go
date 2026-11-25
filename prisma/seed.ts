@@ -1,37 +1,25 @@
 import "dotenv/config"
-import {
-  PrismaClient,
-  type BoardTier,
-  type FormResult,
-} from "@prisma/client"
+import { PrismaClient, type MeetBoardType } from "@prisma/client"
 import bcrypt from "bcryptjs"
 
 import { PLAYERS } from "../lib/mock/jade-data"
-import {
-  ACTIVE_SEASON,
-  BOARD_STANDINGS,
-  SEASON_KPI,
-  WIN_METHODS_SEASON,
-} from "../lib/mock/jade-board"
+import { ACTIVE_SEASON } from "../lib/mock/jade-board"
 
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log("Seeding JadeMahjong…")
+  console.log(
+    "Seeding JadeMahjong (accounts + schedule only — live sessions & tournaments kept)…",
+  )
 
-  await prisma.handRecord.deleteMany()
-  await prisma.sessionSeat.deleteMany()
-  await prisma.gameSession.deleteMany()
-  await prisma.boardStanding.deleteMany()
+  // Demo schedule only — never wipe GameSessions, board standings, or tournaments.
   await prisma.booking.deleteMany()
   await prisma.meet.deleteMany()
-  await prisma.user.deleteMany()
-  await prisma.season.deleteMany()
-  await prisma.player.deleteMany()
 
   for (const player of PLAYERS) {
-    await prisma.player.create({
-      data: {
+    await prisma.player.upsert({
+      where: { id: player.id },
+      create: {
         id: player.id,
         name: player.name,
         nickname: player.nickname,
@@ -44,117 +32,155 @@ async function main() {
         experienceXp: 0,
         skillRating: 1500,
       },
-    })
-  }
-
-  await prisma.season.create({
-    data: {
-      id: ACTIVE_SEASON.id,
-      label: ACTIVE_SEASON.label,
-      rangeLabel: ACTIVE_SEASON.rangeLabel,
-      sessionsPlayed: SEASON_KPI.sessionsPlayed,
-      gamesPlayed: SEASON_KPI.gamesPlayed,
-      hoursAtTable: SEASON_KPI.hoursAtTable,
-      biggestHandPts: SEASON_KPI.biggestHand.points,
-      biggestHandCombo: SEASON_KPI.biggestHand.combo,
-      biggestHandPlayerId: SEASON_KPI.biggestHand.playerId,
-      topComboName: SEASON_KPI.topCombo.name,
-      topComboCount: SEASON_KPI.topCombo.count,
-      hotStreakPlayerId: SEASON_KPI.hotStreak.playerId,
-      hotStreak: SEASON_KPI.hotStreak.streak,
-      selfDrawWins: WIN_METHODS_SEASON.selfDraw,
-      discardWins: WIN_METHODS_SEASON.discard,
-      isActive: true,
-    },
-  })
-
-  for (const standing of BOARD_STANDINGS) {
-    await prisma.boardStanding.create({
-      data: {
-        seasonId: ACTIVE_SEASON.id,
-        playerId: standing.playerId,
-        rank: standing.rank,
-        board: standing.board as BoardTier,
-        points: standing.points,
-        wins: standing.wins,
-        games: standing.games,
-        winRate: standing.winRate,
-        ptsPerWin: standing.ptsPerWin,
-        bonus: standing.bonus,
-        pen: standing.pen,
-        biggestHand: standing.biggestHand,
-        form: standing.form as FormResult[],
-        streak: standing.streak,
-        selfDraw: standing.selfDraw,
-        discardWins: standing.discardWins,
+      update: {
+        name: player.name,
+        nickname: player.nickname,
+        initials: player.initials,
+        city: player.city,
+        district: player.district,
+        house: player.house,
+        experienceLevelId: player.experienceLevelId,
       },
     })
   }
 
-  const adminHash = await bcrypt.hash("jade123", 10)
+  await prisma.season.upsert({
+    where: { id: ACTIVE_SEASON.id },
+    create: {
+      id: ACTIVE_SEASON.id,
+      label: ACTIVE_SEASON.label,
+      rangeLabel: ACTIVE_SEASON.rangeLabel,
+      sessionsPlayed: 0,
+      gamesPlayed: 0,
+      hoursAtTable: 0,
+      biggestHandPts: 0,
+      biggestHandCombo: "",
+      biggestHandPlayerId: PLAYERS[0]?.id ?? "hendra-wijaya",
+      topComboName: "",
+      topComboCount: 0,
+      hotStreakPlayerId: PLAYERS[0]?.id ?? "hendra-wijaya",
+      hotStreak: 0,
+      selfDrawWins: 0,
+      discardWins: 0,
+      isActive: true,
+    },
+    update: {
+      label: ACTIVE_SEASON.label,
+      rangeLabel: ACTIVE_SEASON.rangeLabel,
+      isActive: true,
+    },
+  })
+
+  const passwordHash = await bcrypt.hash("jade123", 10)
   const proExpiry = new Date()
   proExpiry.setDate(proExpiry.getDate() + 365)
 
-  const admin = await prisma.user.create({
-    data: {
+  type SeedUser = {
+    email: string
+    name: string
+    role: "ADMIN" | "MEMBER"
+    membershipTier: "FREE" | "PRO"
+    playerId: string
+    proExpiresAt?: Date
+  }
+
+  const seedUsers: SeedUser[] = [
+    {
       email: "admin@jade.local",
       name: "Jade Admin",
-      passwordHash: adminHash,
       role: "ADMIN",
       membershipTier: "PRO",
-      proExpiresAt: proExpiry,
       playerId: "hendra-wijaya",
+      proExpiresAt: proExpiry,
     },
-  })
-
-  const memberHash = await bcrypt.hash("jade123", 10)
-  const member = await prisma.user.create({
-    data: {
+    {
       email: "sari@jade.local",
       name: "Sari Lestari",
-      passwordHash: memberHash,
       role: "MEMBER",
       membershipTier: "PRO",
-      proExpiresAt: proExpiry,
       playerId: "sari-lestari",
+      proExpiresAt: proExpiry,
     },
-  })
-
-  const freeHash = await bcrypt.hash("jade123", 10)
-  const freeMember = await prisma.user.create({
-    data: {
+    {
       email: "andi@jade.local",
       name: "Andi Saputra",
-      passwordHash: freeHash,
       role: "MEMBER",
       membershipTier: "FREE",
       playerId: "andi-saputra",
     },
-  })
-
-  const rina = await prisma.user.create({
-    data: {
+    {
       email: "rina@jade.local",
       name: "Rina Marlina",
-      passwordHash: freeHash,
       role: "MEMBER",
       membershipTier: "FREE",
       playerId: "rina-marlina",
     },
-  })
-  const eko = await prisma.user.create({
-    data: {
+    {
       email: "eko@jade.local",
       name: "Eko Prasetyo",
-      passwordHash: freeHash,
       role: "MEMBER",
       membershipTier: "FREE",
       playerId: "eko-prasetyo",
     },
+    {
+      email: "dewi@jade.local",
+      name: "Dewi Anggraini",
+      role: "MEMBER",
+      membershipTier: "FREE",
+      playerId: "dewi-anggraini",
+    },
+    {
+      email: "bambang@jade.local",
+      name: "Bambang Sutopo",
+      role: "MEMBER",
+      membershipTier: "FREE",
+      playerId: "bambang-sutopo",
+    },
+    {
+      email: "yudi@jade.local",
+      name: "Yudi Kurniawan",
+      role: "MEMBER",
+      membershipTier: "PRO",
+      playerId: "yudi-kurniawan",
+      proExpiresAt: proExpiry,
+    },
+  ]
+
+  for (const account of seedUsers) {
+    await prisma.user.upsert({
+      where: { email: account.email },
+      create: {
+        email: account.email,
+        name: account.name,
+        passwordHash,
+        role: account.role,
+        membershipTier: account.membershipTier,
+        playerId: account.playerId,
+        proExpiresAt: account.proExpiresAt ?? null,
+      },
+      update: {
+        name: account.name,
+        passwordHash,
+        role: account.role,
+        membershipTier: account.membershipTier,
+        playerId: account.playerId,
+        proExpiresAt: account.proExpiresAt ?? null,
+      },
+    })
+  }
+
+  const admin = await prisma.user.findUniqueOrThrow({
+    where: { email: "admin@jade.local" },
+  })
+  const member = await prisma.user.findUniqueOrThrow({
+    where: { email: "sari@jade.local" },
+  })
+  const freeMember = await prisma.user.findUniqueOrThrow({
+    where: { email: "andi@jade.local" },
   })
 
-  // EDIT HERE — demo weekly meets for Schedule & Booking
-  // Club tables (admin host) → unlimited scans + optional captain
+  const board = (value: MeetBoardType) => value
+
   const friday = await prisma.meet.create({
     data: {
       title: "Friday Night Jade League",
@@ -164,7 +190,7 @@ async function main() {
       startsAt: new Date("2026-11-20T19:00:00+07:00"),
       endsAt: new Date("2026-11-20T22:00:00+07:00"),
       location: "Jade Mahjong Lounge, Bandar Lampung",
-      boardType: "ADVANCED",
+      boardType: board("ADVANCED"),
       maxSeats: 12,
       tables: 3,
       feeIdr: 50_000,
@@ -175,7 +201,7 @@ async function main() {
     },
   })
 
-  const guided = await prisma.meet.create({
+  await prisma.meet.create({
     data: {
       title: "Saturday Afternoon Beginner Guided Table",
       dateLabel: "Sat, 21 Nov",
@@ -184,11 +210,11 @@ async function main() {
       startsAt: new Date("2026-11-21T14:00:00+07:00"),
       endsAt: new Date("2026-11-21T17:00:00+07:00"),
       location: "Jade Mahjong Lounge, Bandar Lampung",
-      boardType: "GUIDED",
-      maxSeats: 4,
-      tables: 1,
-      feeIdr: 75_000,
-      status: "FULL",
+      boardType: board("GUIDED"),
+      maxSeats: 8,
+      tables: 2,
+      feeIdr: 35_000,
+      status: "OPEN",
       hostId: admin.id,
       captainId: admin.id,
       scanLimit: null,
@@ -198,40 +224,8 @@ async function main() {
   await prisma.booking.createMany({
     data: [
       {
-        meetId: guided.id,
-        userId: member.id,
-        status: "CONFIRMED",
-        paymentMethod: "QRIS",
-        seatNumber: 1,
-        checkInCode: "JADE-GUID-SEED01",
-      },
-      {
-        meetId: guided.id,
-        userId: freeMember.id,
-        status: "CONFIRMED",
-        paymentMethod: "VENUE",
-        seatNumber: 2,
-        checkInCode: "JADE-GUID-SEED02",
-      },
-      {
-        meetId: guided.id,
-        userId: rina.id,
-        status: "CONFIRMED",
-        paymentMethod: "VENUE",
-        seatNumber: 3,
-        checkInCode: "JADE-GUID-SEED03",
-      },
-      {
-        meetId: guided.id,
-        userId: admin.id,
-        status: "CONFIRMED",
-        paymentMethod: "VENUE",
-        seatNumber: 4,
-        checkInCode: "JADE-GUID-SEED04",
-      },
-      {
         meetId: friday.id,
-        userId: admin.id,
+        userId: member.id,
         status: "CONFIRMED",
         paymentMethod: "QRIS",
         seatNumber: 1,
@@ -239,7 +233,7 @@ async function main() {
       },
       {
         meetId: friday.id,
-        userId: member.id,
+        userId: freeMember.id,
         status: "CONFIRMED",
         paymentMethod: "VENUE",
         seatNumber: 2,
@@ -257,7 +251,7 @@ async function main() {
       startsAt: new Date("2026-11-29T18:30:00+07:00"),
       endsAt: new Date("2026-11-29T22:00:00+07:00"),
       location: "Jade Mahjong Lounge, Bandar Lampung",
-      boardType: "MCR",
+      boardType: board("MCR"),
       maxSeats: 8,
       tables: 2,
       feeIdr: 60_000,
@@ -268,7 +262,6 @@ async function main() {
     },
   })
 
-  // Club beginner table — unlimited scans
   await prisma.meet.create({
     data: {
       title: "Tuesday Chill Tiles & Coffee",
@@ -278,7 +271,7 @@ async function main() {
       startsAt: new Date("2026-11-24T19:00:00+07:00"),
       endsAt: new Date("2026-11-24T22:00:00+07:00"),
       location: "Jade Mahjong Lounge, Bandar Lampung",
-      boardType: "BEGINNER",
+      boardType: board("BEGINNER"),
       maxSeats: 8,
       tables: 2,
       feeIdr: 40_000,
@@ -289,7 +282,6 @@ async function main() {
     },
   })
 
-  // Player table (Free host) — 3 scans only
   await prisma.meet.create({
     data: {
       title: "Andi's House Casual",
@@ -299,7 +291,7 @@ async function main() {
       startsAt: new Date("2026-11-25T20:00:00+07:00"),
       endsAt: new Date("2026-11-25T23:00:00+07:00"),
       location: "Kedaton · Living room table",
-      boardType: "BEGINNER",
+      boardType: board("BEGINNER"),
       maxSeats: 4,
       tables: 1,
       feeIdr: 0,
@@ -310,7 +302,6 @@ async function main() {
     },
   })
 
-  // Player table (Pro host) — unlimited scans
   await prisma.meet.create({
     data: {
       title: "Sari's Pro Study Table",
@@ -320,7 +311,7 @@ async function main() {
       startsAt: new Date("2026-11-26T19:30:00+07:00"),
       endsAt: new Date("2026-11-26T22:30:00+07:00"),
       location: "Teluk Betung · Cafe nook",
-      boardType: "ADVANCED",
+      boardType: board("ADVANCED"),
       maxSeats: 4,
       tables: 1,
       feeIdr: 25_000,
@@ -331,15 +322,8 @@ async function main() {
     },
   })
 
-  console.log("Seeded users:", {
-    admin: admin.email,
-    member: member.email,
-    free: freeMember.email,
-    rina: rina.email,
-    eko: eko.email,
-  })
   console.log(
-    "No FINISHED game sessions seeded — leaderboard uses mock until a live table is ended.",
+    "Seeded accounts + demo meets. Leaderboard uses finished live sessions only (no mock board).",
   )
   console.log("Done.")
 }

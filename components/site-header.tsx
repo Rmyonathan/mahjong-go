@@ -12,6 +12,7 @@ import {
   LEADERBOARD_HREF,
   SCHEDULE_HREF,
   TOOL_LINKS,
+  TOURNAMENTS_HREF,
 } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 
@@ -108,6 +109,9 @@ export function SiteHeader() {
 
   const scheduleActive =
     pathname === SCHEDULE_HREF || pathname.startsWith(`${SCHEDULE_HREF}/`)
+  const tourneyActive =
+    pathname === TOURNAMENTS_HREF ||
+    pathname.startsWith(`${TOURNAMENTS_HREF}/`)
   const boardActive =
     pathname === LEADERBOARD_HREF || pathname.startsWith(`${LEADERBOARD_HREF}/`)
   const clubActive = CLUB_LEARN_LINKS.some(
@@ -189,6 +193,17 @@ export function SiteHeader() {
                   )}
                 >
                   Schedule
+                </Link>
+                <Link
+                  href={TOURNAMENTS_HREF}
+                  className={cn(
+                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    tourneyActive
+                      ? "bg-jade-soft text-jade-accent"
+                      : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
+                  )}
+                >
+                  Tourney
                 </Link>
                 <Link
                   href={LEADERBOARD_HREF}

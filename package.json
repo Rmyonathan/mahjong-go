@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "sim:ko-table": "tsx scripts/simulate-tournament-table-hands.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {

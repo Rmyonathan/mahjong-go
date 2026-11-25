@@ -8,6 +8,7 @@ import {
   Home,
   Info,
   Layers,
+  Medal,
   Puzzle,
   Shield,
   Trophy,
@@ -19,6 +20,7 @@ import {
 export const DASHBOARD_HREF = "/dashboard"
 export const SCHEDULE_HREF = "/schedule"
 export const LEADERBOARD_HREF = "/leaderboard"
+export const TOURNAMENTS_HREF = "/tournaments"
 export const HOME_GUEST_HREF = "/"
 
 /** EDIT HERE — Club & Learn popover links (desktop + mobile More sheet) */
@@ -106,7 +108,23 @@ export const TOOL_LINKS: {
   },
 ]
 
-/** EDIT HERE — mobile More sheet extras (profile first) */
+/** EDIT HERE — mobile More sheet (leaderboard + profile) */
+export const MORE_LEADERBOARD_LINK = {
+  href: LEADERBOARD_HREF,
+  label: "Leaderboard",
+  subtitle: "House ranks and season standings",
+  icon: Trophy,
+} as const
+
+/** EDIT HERE — mobile More sheet (tournaments; main bar uses Leaderboard) */
+export const MORE_TOURNAMENTS_LINK = {
+  href: TOURNAMENTS_HREF,
+  label: "Tournaments",
+  subtitle: "House opens, brackets, and live tables",
+  icon: Medal,
+} as const
+
+/** EDIT HERE — mobile More sheet extras (profile) */
 export const MORE_PROFILE_LINK = {
   href: "/me",
   label: "My Profile",

@@ -61,6 +61,7 @@ export type CreateSessionSeatInput = {
   guestName?: string | null
   name?: string | null
   nickname?: string | null
+  tournamentEntryId?: string | null
 }
 
 export type CreateSessionInput = {
@@ -68,6 +69,7 @@ export type CreateSessionInput = {
   board: LiveBoard
   seats: CreateSessionSeatInput[]
   meetId?: string | null
+  tournamentTableId?: string | null
   captainUserId: string
   /** Override; otherwise copied from meet or defaults to JADE_HK */
   scoringRuleset?: "CHICKEN" | "JADE_HK"
@@ -104,6 +106,7 @@ const sessionFullInclude = {
   hands: { orderBy: { handNumber: "asc" as const } },
   captain: true,
   meet: { include: { host: { select: meetHostSelect } } },
+  tournamentTable: { select: { id: true, tournamentId: true } },
 } satisfies Prisma.GameSessionInclude
 
 type SessionFull = Prisma.GameSessionGetPayload<{
@@ -184,6 +187,7 @@ export async function createGameSession(input: CreateSessionInput) {
       seatOrder: index,
       userId,
       guestName,
+      tournamentEntryId: seat.tournamentEntryId ?? null,
       netPoints: 0,
       wins: 0,
       selfDraws: 0,
@@ -210,6 +214,7 @@ export async function createGameSession(input: CreateSessionInput) {
       scoringRuleset,
       status: "LIVE",
       meetId: input.meetId ?? null,
+      tournamentTableId: input.tournamentTableId ?? null,
       captainUserId: input.captainUserId,
       seats: { create: seatRows },
     },
@@ -333,6 +338,7 @@ export function toLiveSession(session: SessionFull): LiveSession {
 
 export function liveDurationForSession(session: {
   startedAt: Date
+  tournamentTableId?: string | null
   captain: {
     role: string
     membershipTier: string
@@ -346,6 +352,15 @@ export function liveDurationForSession(session: {
     } | null
   } | null
 }) {
+  // EDIT HERE — house tournament tables run until wasit ends (no Free/Pro auto-end).
+  if (session.tournamentTableId) {
+    return {
+      tier: "club" as const,
+      maxMs: null,
+      maxHours: null,
+      expiresAt: null,
+    }
+  }
   const duration = resolveLiveSessionDuration({
     captain: session.captain,
     meetHost: session.meet?.host ?? null,
@@ -367,6 +382,8 @@ export function serializeSession(session: SessionFull) {
     captainUserId: session.captainUserId,
     captainName: session.captain.name,
     meetId: session.meetId,
+    tournamentTableId: session.tournamentTableId,
+    tournamentId: session.tournamentTable?.tournamentId ?? null,
     boardType: session.boardType,
     dbStatus: session.status as SessionStatus,
     durationTier: duration.tier,
@@ -505,13 +522,41 @@ export async function finishGameSession(sessionId: string) {
     })
     if (!session) throw new Error("Session not found")
     if (session.status === "FINISHED") {
-      return session
+      return { finished: session, skippedHouseLeaderboard: false }
     }
 
+    const isTournamentSession = Boolean(session.tournamentTableId)
+    const linkedTableId = session.tournamentTableId
     const endedAt = new Date()
+
+    if (linkedTableId) {
+      const { appendTournamentSessionLogId } = await import(
+        "@/lib/tournaments/session-log-ids"
+      )
+      const table = await tx.tournamentTable.findUnique({
+        where: { id: linkedTableId },
+        select: { sessionLogIds: true },
+      })
+      if (table) {
+        await tx.tournamentTable.update({
+          where: { id: linkedTableId },
+          data: {
+            sessionLogIds: appendTournamentSessionLogId(
+              table.sessionLogIds,
+              sessionId,
+            ),
+          },
+        })
+      }
+    }
+
     await tx.gameSession.update({
       where: { id: sessionId },
-      data: { status: "FINISHED", endedAt },
+      data: {
+        status: "FINISHED",
+        endedAt,
+        ...(isTournamentSession ? { tournamentTableId: null } : {}),
+      },
     })
 
     const ranked = [...session.seats].sort(
@@ -521,7 +566,7 @@ export async function finishGameSession(sessionId: string) {
       (seat) => seat.user?.playerId && seat.user.player,
     )
 
-    if (registered.length >= 2) {
+    if (!isTournamentSession && registered.length >= 2) {
       const ratings = registered.map(
         (seat) => seat.user!.player!.skillRating,
       )
@@ -549,7 +594,7 @@ export async function finishGameSession(sessionId: string) {
         })
         await applyPlayerXpGain(player.id, xpGain, tx)
       }
-    } else {
+    } else if (!isTournamentSession) {
       const { applyPlayerXpGain } = await import("@/lib/xp/apply")
       for (const seat of registered) {
         // EDIT HERE — XP-per-session base grant (also exported as XP_PER_SESSION)
@@ -562,7 +607,7 @@ export async function finishGameSession(sessionId: string) {
     }
 
     const season = await tx.season.findFirst({ where: { isActive: true } })
-    if (season) {
+    if (season && !isTournamentSession) {
       const finishedCount = await tx.gameSession.count({
         where: { status: "FINISHED" },
       })
@@ -583,8 +628,9 @@ export async function finishGameSession(sessionId: string) {
       include: sessionFullInclude,
     })
 
-    return finished
-  }).then(async (finished) => {
+    return { finished, skippedHouseLeaderboard: isTournamentSession }
+  }).then(async ({ finished, skippedHouseLeaderboard }) => {
+    if (skippedHouseLeaderboard) return finished
     // Rebuild outside the finish TX so standings always match finished seats
     // (seed demo rows are replaced once real tables exist).
     const season = await prisma.season.findFirst({ where: { isActive: true } })
@@ -630,6 +676,19 @@ export async function listLiveSessionsForUser(userId: string, isAdmin = false) {
 export async function findLiveSessionByMeetId(meetId: string) {
   const session = await prisma.gameSession.findFirst({
     where: { meetId, status: "LIVE" },
+    include: sessionFullInclude,
+    orderBy: { startedAt: "desc" },
+  })
+  if (!session) return null
+  const next = await ensureLiveSessionNotExpired(session)
+  return next.status === "LIVE" ? next : null
+}
+
+export async function findLiveSessionByTournamentTableId(
+  tournamentTableId: string,
+) {
+  const session = await prisma.gameSession.findFirst({
+    where: { tournamentTableId, status: "LIVE" },
     include: sessionFullInclude,
     orderBy: { startedAt: "desc" },
   })

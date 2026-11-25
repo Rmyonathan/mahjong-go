@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requireUser } from "@/lib/auth"
 import { getGameSession, serializeSession } from "@/lib/session/service"
+import { userCanLogLinkedTournamentSession } from "@/lib/tournaments/session-access"
 
 export async function GET(
   _request: Request,
@@ -20,13 +21,22 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 })
   }
 
+  const tournamentWasit = await userCanLogLinkedTournamentSession(
+    user.id,
+    user.role,
+    session.tournamentTableId,
+  )
+  const isCaptain =
+    user.id === session.captainUserId || user.role === "ADMIN"
+
   return NextResponse.json({
     session: serializeSession(session),
     viewer: {
       id: user.id,
       name: user.name,
       role: user.role,
-      isCaptain: user.id === session.captainUserId || user.role === "ADMIN",
+      isCaptain,
+      canLogHands: isCaptain || tournamentWasit,
     },
   })
 }
