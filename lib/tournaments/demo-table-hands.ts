@@ -55,7 +55,10 @@ export function buildDemoTournamentHands(count: 1 | 4 = 4): LogHandInput[] {
       dealtBySeatIndex: spec.dealtBySeatIndex,
       points,
       combos: spec.combos,
+      tileIds: [],
+      winningTileId: "",
       deltas,
+      demoHandId: `sim-hand-${spec.winnerSeatIndex}`,
     }
   })
 }

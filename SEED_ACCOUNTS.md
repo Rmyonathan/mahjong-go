@@ -25,5 +25,7 @@ Dev logins created by `npm run db:seed` (`prisma/seed.ts`).
 - **Retention:** `/dashboard` bounties · `/puzzle` daily WWYD · `/coaching` videos + hand audit
 - Re-seed anytime with: `npm run db:seed` (refreshes demo meets + dev logins; **does not** delete live sessions, tournaments, or inject mock leaderboard rows)
 - **KO one-table test (4 hands, not full bracket):** on hub **Live tables** (dev only): **Sim 1 hand** / **Sim 4 hands · this table** for the selected table only. Or CLI: `npm run sim:ko-table` / `npx tsx scripts/simulate-tournament-table-hands.ts <tournamentId> <tableId>` · `--finish` ends the session ledger.
+- **PWA icons:** regenerate with `npm run icons:pwa` after replacing `public/jade.png`
+- **Deploy env:** copy `.env.example` → set at least `DATABASE_URL` + `AUTH_SECRET`. On Vercel/Helipod set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` so tournament rules PDFs persist.
 
 Local only — do not use these passwords in production.

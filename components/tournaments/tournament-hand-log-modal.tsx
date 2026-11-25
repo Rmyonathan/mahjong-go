@@ -49,18 +49,17 @@ export function TournamentHandLogModal({
   }, [open])
 
   if (!table) return null
+  const activeTable = table
 
   async function submit(hand: ConfirmedScanHand) {
-    if (!table) return
-
     async function resolveSessionId(): Promise<string> {
-      if (table.liveSessionId) return table.liveSessionId
-      const last = table.sessionLogs.at(-1)
+      if (activeTable.liveSessionId) return activeTable.liveSessionId
+      const last = activeTable.sessionLogs.at(-1)
       if (last?.status === "LIVE") return last.id
       const openRes = await fetch(`/api/tournaments/actions/open-live-table`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tournamentId, tableId: table.id }),
+        body: JSON.stringify({ tournamentId, tableId: activeTable.id }),
       })
       const openData = (await openRes.json()) as {
         error?: string

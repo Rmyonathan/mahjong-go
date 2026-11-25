@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Fraunces, IBM_Plex_Mono, Source_Sans_3 } from "next/font/google"
 import "./globals.css"
 
@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { SiteChrome } from "@/components/site-chrome"
 import { SiteHeader } from "@/components/site-header"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { PwaRegister } from "@/components/pwa-register"
 
 const serif = Fraunces({
   variable: "--font-serif",
@@ -44,13 +45,25 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
-    icon: [{ url: "/jade.png", type: "image/png" }],
-    apple: [{ url: "/jade.png", type: "image/png" }],
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
+}
+
+// EDIT HERE — PWA theme bar / safe-area (match globals.css jade tokens).
+export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F6F4EE" },
     { media: "(prefers-color-scheme: dark)", color: "#0F1A14" },
   ],
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
@@ -90,6 +103,7 @@ export default function RootLayout({
               </footer>
             </SiteChrome>
             <MobileBottomNav />
+            <PwaRegister />
           </div>
         </ThemeProvider>
       </body>

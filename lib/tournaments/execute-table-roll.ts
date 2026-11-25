@@ -1,4 +1,9 @@
-import type { Prisma, TournamentEntry, TournamentTable } from "@prisma/client"
+import type {
+  Prisma,
+  TournamentEntry,
+  TournamentStatus,
+  TournamentTable,
+} from "@prisma/client"
 
 import {
   buildSeatingPlan,
@@ -16,7 +21,7 @@ export async function executeTableRoll(
   tx: Prisma.TransactionClient,
   input: {
     tournamentId: string
-    tournamentStatus: string
+    tournamentStatus: TournamentStatus
     targetRound: number
     avoidFromRound: number
     isKnockout: boolean

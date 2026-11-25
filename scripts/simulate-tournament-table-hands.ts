@@ -106,7 +106,7 @@ async function main() {
     })
     sessionId = result.sessionId
     console.log(
-      `Hand ${index + 1}/4 · winner seat ${spec.winnerSeatIndex + 1} · session ${sessionId}`,
+      `Hand ${index + 1}/4 · winner seat ${hand.winnerSeatIndex + 1} · session ${sessionId}`,
     )
   }
 
