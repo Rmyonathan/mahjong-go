@@ -22,6 +22,7 @@ const PUBLIC_PREFIXES = [
   "/hk",
   "/learn",
   "/tournaments",
+  "/hand-clinic",
 ]
 
 /** Public APIs guests need for browse pages (mutations still auth-check in-route). */
@@ -34,6 +35,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/puzzle/today",
   "/api/scan", // Gemini tile detect for /scan calculator (guests OK)
   "/api/tournaments",
+  "/api/hand-clinic",
 ]
 
 function isPublicPath(pathname: string) {
@@ -86,7 +88,9 @@ export async function middleware(request: NextRequest) {
 
   const isPublicSessionsRead =
     request.method === "GET" &&
-    (pathname === "/api/sessions" || pathname === "/api/session-invites")
+    (pathname === "/api/sessions" ||
+      pathname === "/api/session-invites" ||
+      pathname === "/api/notifications")
 
   if (!session && !isPublicPath(pathname) && !isPublicSessionsRead) {
     const login = new URL("/login", request.url)

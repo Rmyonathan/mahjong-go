@@ -214,14 +214,25 @@ export async function respondToSeatInvite(input: {
         i."seatId",
         i."inviteeUserId",
         i."status",
-        gs."status"::text AS "sessionStatus"
+        gs."status"::text AS "sessionStatus",
+        gs."meetId" AS "meetId"
       FROM "SessionSeatInvite" i
       INNER JOIN "GameSession" gs ON gs."id" = i."sessionId"
       WHERE i."id" = ${input.inviteId}
       FOR UPDATE
     `
 
-    const invite = rows[0]
+    const invite = rows[0] as
+      | {
+          id: string
+          sessionId: string
+          seatId: string
+          inviteeUserId: string
+          status: string
+          sessionStatus: string
+          meetId: string | null
+        }
+      | undefined
     if (!invite) {
       throw new InviteActionError("Invite not found", 404)
     }
@@ -246,6 +257,71 @@ export async function respondToSeatInvite(input: {
         SET "status" = 'ACCEPTED', "updatedAt" = NOW()
         WHERE "id" = ${invite.id}
       `
+
+      if (invite.meetId) {
+        const meet = await tx.meet.findUnique({
+          where: { id: invite.meetId },
+          select: { id: true, maxSeats: true, status: true },
+        })
+        if (meet) {
+          const existingBooking = await tx.booking.findUnique({
+            where: {
+              meetId_userId: { meetId: meet.id, userId: input.userId },
+            },
+          })
+          if (!existingBooking || existingBooking.status !== "CONFIRMED") {
+            const { makeCheckInCode, nextAvailableSeatNumber } = await import(
+              "@/lib/schedule/meet-service"
+            )
+            const seatNum =
+              existingBooking?.seatNumber ??
+              (await nextAvailableSeatNumber(meet.id, meet.maxSeats, tx).catch(
+                () => 1,
+              ))
+            const checkIn =
+              existingBooking?.checkInCode ?? makeCheckInCode(meet.id)
+
+            if (existingBooking) {
+              await tx.booking.update({
+                where: { id: existingBooking.id },
+                data: {
+                  status: "CONFIRMED",
+                  seatNumber: seatNum,
+                  checkInCode: checkIn,
+                },
+              })
+            } else {
+              await tx.booking.create({
+                data: {
+                  meetId: meet.id,
+                  userId: input.userId,
+                  status: "CONFIRMED",
+                  seatNumber: seatNum,
+                  checkInCode: checkIn,
+                },
+              })
+            }
+          }
+
+          const { syncMeetStatus } = await import("@/lib/schedule/meet-service")
+          const confirmedCount = await tx.booking.count({
+            where: { meetId: meet.id, status: "CONFIRMED" },
+          })
+          const sessionSeatCount = await tx.sessionSeat.count({
+            where: { sessionId: invite.sessionId },
+          })
+          await tx.meet.update({
+            where: { id: meet.id },
+            data: {
+              status: syncMeetStatus(
+                Math.max(confirmedCount, sessionSeatCount),
+                meet.maxSeats,
+                meet.status,
+              ),
+            },
+          })
+        }
+      }
     } else {
       await tx.$executeRaw`
         UPDATE "SessionSeatInvite"

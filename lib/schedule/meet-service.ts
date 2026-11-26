@@ -64,6 +64,31 @@ const meetInclude = {
       },
     },
   },
+  sessions: {
+    orderBy: { startedAt: "desc" as const },
+    take: 1,
+    include: {
+      seats: {
+        orderBy: { seatOrder: "asc" as const },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              player: {
+                select: {
+                  id: true,
+                  nickname: true,
+                  initials: true,
+                  experienceLevelId: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 } satisfies Prisma.MeetInclude
 
 export type MeetWithBookings = Prisma.MeetGetPayload<{
@@ -139,6 +164,15 @@ export function serializeMeet(
   const waitlist = meet.bookings.filter(
     (booking) => booking.status === "WAITLIST",
   )
+  const latestSessionSeats = meet.sessions[0]?.seats ?? []
+  const confirmedUserIds = new Set(confirmed.map((b) => b.userId))
+  const extraSessionSeats = latestSessionSeats.filter(
+    (seat) => !seat.userId || !confirmedUserIds.has(seat.userId),
+  )
+  const effectiveConfirmedCount = Math.min(
+    meet.maxSeats,
+    Math.max(confirmed.length, latestSessionSeats.length),
+  )
   const yours = viewerUserId
     ? meet.bookings.find((booking) => booking.userId === viewerUserId) ?? null
     : null
@@ -192,35 +226,61 @@ export function serializeMeet(
       meet.scanLimit == null
         ? "Unlimited scans"
         : `${meet.scanLimit} scans`,
-    confirmedCount: confirmed.length,
+    confirmedCount: effectiveConfirmedCount,
     pendingCount: pending.length,
     waitlistCount: waitlist.length,
-    seatsFilled: confirmed.length,
-    isFull: confirmed.length >= meet.maxSeats || meet.status === "FULL",
+    seatsFilled: effectiveConfirmedCount,
+    isFull: effectiveConfirmedCount >= meet.maxSeats || meet.status === "FULL",
     earlyBirdActive: Boolean(
       meet.proEarlyBirdUntil && meet.proEarlyBirdUntil.getTime() > Date.now(),
     ),
     isHost,
     canLaunchLive,
-    roster: confirmed.map((booking) => {
-      const player = booking.user.player
-      const rating = player ? (ratings.get(player.id) ?? 1400) : 1400
-      return {
-        bookingId: booking.id,
-        userId: booking.userId,
-        name: booking.user.name,
-        nickname:
+    roster: [
+      ...confirmed.map((booking) => {
+        const player = booking.user.player
+        const rating = player ? (ratings.get(player.id) ?? 1400) : 1400
+        return {
+          bookingId: booking.id,
+          userId: booking.userId,
+          playerId: player?.id ?? null,
+          name: booking.user.name,
+          nickname:
+            player?.nickname ??
+            booking.user.name.split(" ")[0] ??
+            booking.user.name,
+          badge:
+            player?.initials?.slice(0, 1) ?? booking.user.name.slice(0, 1),
+          rating,
+          levelId: player?.experienceLevelId ?? "pemula",
+          seatNumber: booking.seatNumber,
+          isYou: booking.userId === viewerUserId,
+        }
+      }),
+      ...extraSessionSeats.map((seat) => {
+        const player = seat.user?.player ?? null
+        const display =
           player?.nickname ??
-          booking.user.name.split(" ")[0] ??
-          booking.user.name,
-        badge:
-          player?.initials?.slice(0, 1) ?? booking.user.name.slice(0, 1),
-        rating,
-        levelId: player?.experienceLevelId ?? "pemula",
-        seatNumber: booking.seatNumber,
-        isYou: booking.userId === viewerUserId,
-      }
-    }),
+          seat.user?.name.split(" ")[0] ??
+          seat.guestName?.trim() ??
+          "Guest"
+        const fullName = seat.user?.name ?? seat.guestName?.trim() ?? "Guest"
+        const rating = player ? (ratings.get(player.id) ?? 1400) : 1400
+        return {
+          bookingId: `seat-${seat.id}`,
+          userId: seat.userId ?? `guest-${seat.id}`,
+          playerId: player?.id ?? null,
+          name: fullName,
+          nickname: display,
+          badge:
+            player?.initials?.slice(0, 1) ?? fullName.slice(0, 1).toUpperCase(),
+          rating,
+          levelId: player?.experienceLevelId ?? "pemula",
+          seatNumber: seat.seatOrder + 1,
+          isYou: seat.userId != null && seat.userId === viewerUserId,
+        }
+      }),
+    ],
     pendingRequests: isHost
       ? pending.map((booking) => ({
           bookingId: booking.id,
@@ -365,9 +425,12 @@ export async function listUpcomingMeets(
 
   const meets = [...upcoming, ...past]
   const playerIds = meets.flatMap((meet) =>
-    meet.bookings
-      .map((booking) => booking.user.player?.id)
-      .filter((id): id is string => Boolean(id)),
+    [
+      ...meet.bookings.map((booking) => booking.user.player?.id),
+      ...meet.sessions.flatMap((s) =>
+        s.seats.map((seat) => seat.user?.player?.id),
+      ),
+    ].filter((id): id is string => Boolean(id)),
   )
   const ratings = await ratingMapForPlayers(playerIds)
   return meets.map((meet) =>

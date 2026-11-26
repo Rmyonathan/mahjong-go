@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 
 import { CameraScanModal } from "@/components/session/camera-scan-modal"
 import type { ConfirmedScanHand } from "@/components/session/camera-scan-modal"
@@ -42,11 +42,13 @@ export function TournamentHandLogModal({
   onLogged: () => void
 }) {
   const [step, setStep] = useState<LogStep>("choose")
+  const [prevOpen, setPrevOpen] = useState(open)
   const seats = useMemo(() => tableToLiveSeats(table), [table])
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) setStep("choose")
-  }, [open])
+  }
 
   if (!table) return null
   const activeTable = table

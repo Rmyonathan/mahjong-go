@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { KeyRound, Search } from "lucide-react"
 
 import { JadePageLoader } from "@/components/jade-page-loader"
+import { ScoutPlayerModal } from "@/components/players/scout-player-modal"
 import { BookSeatModal } from "@/components/schedule/book-seat-modal"
 import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
 import { InviteCodeModal } from "@/components/schedule/invite-code-modal"
@@ -75,6 +76,7 @@ function SchedulePageInner() {
   const [bookingMeetId, setBookingMeetId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(openCreateFromUrl)
   const [proOpen, setProOpen] = useState(false)
+  const [scoutPlayerId, setScoutPlayerId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [liveByMeetId, setLiveByMeetId] = useState<Record<string, string>>({})
 
@@ -637,6 +639,7 @@ function SchedulePageInner() {
                 }
                 onDeleted={() => void refresh()}
                 onManaged={() => void refresh()}
+                onScout={(playerId) => setScoutPlayerId(playerId)}
               />
             ))}
           </ul>
@@ -715,6 +718,12 @@ function SchedulePageInner() {
         initialCode={inviteDraft}
         onUnlock={unlockInvite}
       />
+
+      <ScoutPlayerModal
+        playerId={scoutPlayerId}
+        onClose={() => setScoutPlayerId(null)}
+        accountName={accountName}
+      />
     </main>
   )
 }
@@ -733,6 +742,7 @@ function MeetCard({
   onReview,
   onDeleted,
   onManaged,
+  onScout,
 }: {
   meet: ApiMeet
   now: number
@@ -747,6 +757,7 @@ function MeetCard({
   onReview: (bookingId: string, action: "approve" | "reject" | "release") => void
   onDeleted: () => void
   onManaged: () => void
+  onScout: (playerId: string) => void
 }) {
   const remaining = meet.proEarlyBirdUntil
     ? Math.max(0, new Date(meet.proEarlyBirdUntil).getTime() - now)
@@ -942,12 +953,26 @@ function MeetCard({
                     <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
                       {player.badge}
                     </span>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
-                      {player.seatNumber != null
-                        ? `#${player.seatNumber} · `
-                        : null}
-                      {player.nickname} · {player.rating}
-                    </span>
+                    {loggedIn && player.playerId ? (
+                      <button
+                        type="button"
+                        onClick={() => onScout(player.playerId!)}
+                        className="font-mono text-[10px] uppercase tracking-[0.1em] underline-offset-2 hover:text-jade-accent hover:underline"
+                        title="Scout player"
+                      >
+                        {player.seatNumber != null
+                          ? `#${player.seatNumber} · `
+                          : null}
+                        {player.nickname} · {player.rating}
+                      </button>
+                    ) : (
+                      <span className="font-mono text-[10px] uppercase tracking-[0.1em]">
+                        {player.seatNumber != null
+                          ? `#${player.seatNumber} · `
+                          : null}
+                        {player.nickname} · {player.rating}
+                      </span>
+                    )}
                   </span>
                   {canSwapRoster ? (
                     <button

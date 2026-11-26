@@ -82,8 +82,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const maxSeats = Math.max(1, Number(body.maxSeats) || 4)
-  const tables = Math.max(1, Number(body.tables) || Math.ceil(maxSeats / 4))
+  const tables = 1
+  const maxSeats = 4
   const location = body.location?.trim() || DEFAULT_MEET_LOCATION
 
   const hostRow = await prisma.user.findUnique({
@@ -101,7 +101,14 @@ export async function POST(request: Request) {
 
   const scanLimit = resolveScanLimitForUser(hostRow)
   const isClub = hostRow.role === "ADMIN"
-  const feeIdr = isClub
+  let isCertifiedMentor = isClub
+  if (!isClub && boardType === "GUIDED") {
+    const { getMentorStatusForUser } = await import("@/lib/mentors/service")
+    const mentor = await getMentorStatusForUser(hostRow.id)
+    isCertifiedMentor = mentor.isCertifiedMentor
+  }
+  const canChargeSeats = isClub || (isCertifiedMentor && boardType === "GUIDED")
+  const feeIdr = canChargeSeats
     ? typeof body.feeIdr === "number" && body.feeIdr >= 0
       ? body.feeIdr
       : DEFAULT_MEET_FEE_IDR

@@ -7,6 +7,7 @@ import { ChevronLeft, Share2 } from "lucide-react"
 
 import { FormSquares } from "@/components/jade/form-squares"
 import { TileStrip } from "@/components/jade/tile-strip"
+import { ScoutPlayerModal } from "@/components/players/scout-player-modal"
 import { HandLogModal } from "@/components/session/hand-log-modal"
 import {
   CameraScanModal,
@@ -68,6 +69,7 @@ function LiveSessionInner() {
   const [canLogHands, setCanLogHands] = useState(false)
   const [pendingInvitesCount, setPendingInvitesCount] = useState(0)
   const [pendingInviteNames, setPendingInviteNames] = useState<string[]>([])
+  const [scoutPlayerId, setScoutPlayerId] = useState<string | null>(null)
 
   const refresh = useCallback(async (id: string) => {
     const response = await fetch(`/api/sessions/${id}`)
@@ -438,7 +440,25 @@ function LiveSessionInner() {
                 ) : null}
               </div>
               <h2 className="mt-3 truncate font-serif text-2xl leading-none">
-                {seat.name}
+                {(() => {
+                  const metaPlayerId = (
+                    session as LiveSession & {
+                      seatsMeta?: Array<{ playerId?: string | null }>
+                    }
+                  ).seatsMeta?.[index]?.playerId
+                  return metaPlayerId ? (
+                    <button
+                      type="button"
+                      onClick={() => setScoutPlayerId(metaPlayerId)}
+                      className="truncate text-left underline-offset-4 hover:text-jade-accent hover:underline"
+                      title="Scout player"
+                    >
+                      {seat.name}
+                    </button>
+                  ) : (
+                    seat.name
+                  )
+                })()}
               </h2>
               <p
                 className={cn(
@@ -574,6 +594,10 @@ function LiveSessionInner() {
           setCameraScanOpen(false)
           logConfirmed(hand)
         }}
+      />
+      <ScoutPlayerModal
+        playerId={scoutPlayerId}
+        onClose={() => setScoutPlayerId(null)}
       />
     </main>
   )

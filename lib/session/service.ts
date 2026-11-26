@@ -320,6 +320,66 @@ export async function createGameSession(input: CreateSessionInput) {
     })
   }
 
+  if (input.meetId) {
+    const { makeCheckInCode, nextAvailableSeatNumber, syncMeetStatus } =
+      await import("@/lib/schedule/meet-service")
+    const meet = await prisma.meet.findUnique({
+      where: { id: input.meetId },
+      select: { id: true, maxSeats: true, status: true },
+    })
+    if (meet) {
+      for (const seat of created.seats) {
+        if (!seat.userId) continue
+        const existingBooking = await prisma.booking.findUnique({
+          where: {
+            meetId_userId: { meetId: meet.id, userId: seat.userId },
+          },
+        })
+        if (existingBooking?.status === "CONFIRMED") continue
+
+        const seatNum =
+          existingBooking?.seatNumber ??
+          (await nextAvailableSeatNumber(meet.id, meet.maxSeats).catch(
+            () => seat.seatOrder + 1,
+          ))
+        const checkIn =
+          existingBooking?.checkInCode ?? makeCheckInCode(meet.id)
+
+        if (existingBooking) {
+          await prisma.booking.update({
+            where: { id: existingBooking.id },
+            data: {
+              status: "CONFIRMED",
+              seatNumber: seatNum,
+              checkInCode: checkIn,
+            },
+          })
+        } else {
+          await prisma.booking.create({
+            data: {
+              meetId: meet.id,
+              userId: seat.userId,
+              status: "CONFIRMED",
+              seatNumber: seatNum,
+              checkInCode: checkIn,
+            },
+          })
+        }
+      }
+
+      const confirmedCount = await prisma.booking.count({
+        where: { meetId: meet.id, status: "CONFIRMED" },
+      })
+      const effectiveFilled = Math.max(confirmedCount, created.seats.length)
+      await prisma.meet.update({
+        where: { id: meet.id },
+        data: {
+          status: syncMeetStatus(effectiveFilled, meet.maxSeats, meet.status),
+        },
+      })
+    }
+  }
+
   return created
 }
 
@@ -607,6 +667,32 @@ export async function logHand(sessionId: string, input: LogHandInput) {
       })
     }
 
+    return {
+      hand,
+      winnerUserId: isDraw ? null : (seats[input.winnerSeatIndex]?.userId ?? null),
+      points: isDraw ? 0 : Math.max(0, Math.round(input.points)),
+      sessionTitle: session.title,
+    }
+  }).then(async ({ hand, winnerUserId, points, sessionTitle }) => {
+    // Milestone: First 8+ Point Hand
+    if (winnerUserId && points >= 8) {
+      const { createPlayerNotification, hasNotificationTitle } = await import(
+        "@/lib/notifications/service"
+      )
+      const title = "First 8-Point Hand"
+      const already = await hasNotificationTitle(winnerUserId, title).catch(
+        () => true,
+      )
+      if (!already) {
+        await createPlayerNotification({
+          userId: winnerUserId,
+          kind: "BIG_HAND",
+          title,
+          body: `You scored a ${points}-point hand at ${sessionTitle}!`,
+          href: `/session/live?id=${encodeURIComponent(sessionId)}`,
+        }).catch(() => undefined)
+      }
+    }
     return hand
   })
 }
@@ -616,6 +702,11 @@ function expectedScore(rating: number, opponentAvg: number) {
 }
 
 export async function finishGameSession(sessionId: string) {
+  const { ensureEloSnapshotTable, recordPlayerEloSnapshot } = await import(
+    "@/lib/elo/snapshots"
+  )
+  await ensureEloSnapshotTable()
+
   return prisma.$transaction(async (tx) => {
     const session = await tx.gameSession.findUnique({
       where: { id: sessionId },
@@ -689,9 +780,17 @@ export async function finishGameSession(sessionId: string) {
         const xpGain = XP_PER_SESSION + seat.wins * 5
         const { applyPlayerXpGain } = await import("@/lib/xp/apply")
 
+        const clampedRating = Math.max(100, nextRating)
         await tx.player.update({
           where: { id: player.id },
-          data: { skillRating: Math.max(100, nextRating) },
+          data: { skillRating: clampedRating },
+        })
+        await recordPlayerEloSnapshot(tx, {
+          playerId: player.id,
+          sessionId: session.id,
+          sessionTitle: session.title,
+          ratingBefore: player.skillRating,
+          ratingAfter: clampedRating,
         })
         await applyPlayerXpGain(player.id, xpGain, tx)
       }
@@ -741,6 +840,68 @@ export async function finishGameSession(sessionId: string) {
       )
       await rebuildStandingsFromFinishedSessions(season.id)
     }
+
+    // Milestones: Rank promotion & 3 Wins in a Row
+    if (!finished.tournamentTableId) {
+      const { skillBandFromRating } = await import("@/lib/mock/jade-levels")
+      const { createPlayerNotification, hasNotificationTitle } = await import(
+        "@/lib/notifications/service"
+      )
+      const { getPlayerEloHistory } = await import("@/lib/elo/snapshots")
+
+      for (const seat of finished.seats) {
+        if (!seat.userId || !seat.user?.playerId) continue
+        const history = await getPlayerEloHistory(seat.user.playerId).catch(
+          () => [],
+        )
+        const latest = history.find((h) => h.sessionId === finished.id)
+        if (latest && latest.ratingAfter > latest.ratingBefore) {
+          const prevBand = skillBandFromRating(latest.ratingBefore)
+          const nextBand = skillBandFromRating(latest.ratingAfter)
+          const prevLabel = `${prevBand.tier.name} ${prevBand.subrank}`.trim()
+          const nextLabel = `${nextBand.tier.name} ${nextBand.subrank}`.trim()
+          if (prevLabel !== nextLabel) {
+            await createPlayerNotification({
+              userId: seat.userId,
+              kind: "RANK_UP",
+              title: `Promoted to ${nextLabel}`,
+              body: `Your Skill Rating climbed to ${latest.ratingAfter} (+${latest.delta})!`,
+              href: `/players/${seat.user.playerId}`,
+            }).catch(() => undefined)
+          }
+        }
+
+        const recentSeats = await prisma.sessionSeat.findMany({
+          where: {
+            userId: seat.userId,
+            session: { status: "FINISHED" },
+          },
+          orderBy: { session: { startedAt: "desc" } },
+          take: 3,
+          select: { netPoints: true },
+        })
+        if (
+          recentSeats.length === 3 &&
+          recentSeats.every((r) => r.netPoints > 0)
+        ) {
+          const streakTitle = "3 Wins in a Row"
+          const already = await hasNotificationTitle(
+            seat.userId,
+            streakTitle,
+          ).catch(() => true)
+          if (!already) {
+            await createPlayerNotification({
+              userId: seat.userId,
+              kind: "STREAK",
+              title: streakTitle,
+              body: "Hot streak! You finished positive in 3 consecutive sessions.",
+              href: `/players/${seat.user.playerId}`,
+            }).catch(() => undefined)
+          }
+        }
+      }
+    }
+
     return finished
   })
 }

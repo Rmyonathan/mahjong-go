@@ -12,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react"
 
+import { NotificationBell } from "@/components/notification-bell"
 import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import { SearchPlayerModal } from "@/components/search-player-modal"
 import {
@@ -446,6 +447,8 @@ export function SiteHeader() {
                 >
                   <Search className="size-4" />
                 </button>
+
+                <NotificationBell loggedIn={loggedIn} />
 
                 <button
                   type="button"

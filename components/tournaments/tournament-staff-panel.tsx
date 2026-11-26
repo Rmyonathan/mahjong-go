@@ -25,16 +25,19 @@ export function TournamentStaffPanel({
   const [wasitUserIds, setWasitUserIds] = useState<string[]>(
     tournament.wasitUserIds ?? [],
   )
+  const staffSyncKey = `${(tournament.panitiaUserIds ?? []).join(",")}|${(tournament.wasitUserIds ?? []).join(",")}`
+  const [prevStaffSyncKey, setPrevStaffSyncKey] = useState(staffSyncKey)
   const [members, setMembers] = useState<{ userId: string; name: string }[]>(
     [],
   )
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  if (staffSyncKey !== prevStaffSyncKey) {
+    setPrevStaffSyncKey(staffSyncKey)
     setPanitiaUserIds(tournament.panitiaUserIds ?? [])
     setWasitUserIds(tournament.wasitUserIds ?? [])
-  }, [tournament.panitiaUserIds, tournament.wasitUserIds])
+  }
 
   useEffect(() => {
     if (!editing) return

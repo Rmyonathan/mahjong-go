@@ -2,16 +2,22 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { MentorApplicationCard } from "@/components/players/mentor-application-card"
+import { PlayerEloChart } from "@/components/players/player-elo-chart"
 import { PlayerMembershipCard } from "@/components/players/player-membership-card"
 import { PlayerProfileEditor } from "@/components/players/player-profile-editor"
 import { PlayerProTeaser } from "@/components/players/player-pro-teaser"
 import { RecentHandsList } from "@/components/players/recent-hands-list"
 import { SessionHistoryList } from "@/components/session/session-history-list"
+import { MonthlyWrappedCard } from "@/components/share/monthly-wrapped-card"
 import { getSessionUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { getMonthlyJadeWrapped } from "@/lib/data/monthly-wrapped"
 import { getPlayerProfile } from "@/lib/data/player-profile"
 import { getPersonalSessionHistory } from "@/lib/data/session-history"
+import { getPlayerEloHistory } from "@/lib/elo/snapshots"
 import { isProMembership, membershipLabelForUser } from "@/lib/membership"
+import { getMentorStatusForUser } from "@/lib/mentors/service"
 import { formatSignedPoints } from "@/lib/mock/jade-board"
 
 export const dynamic = "force-dynamic"
@@ -34,9 +40,10 @@ export async function generateMetadata({
 
 export default async function PlayerPage({ params }: PlayerPageProps) {
   const { id } = await params
-  const [profile, session] = await Promise.all([
+  const [profile, session, eloHistory] = await Promise.all([
     getPlayerProfile(id),
     getSessionUser(),
+    getPlayerEloHistory(id),
   ])
   if (!profile) notFound()
 
@@ -68,11 +75,15 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
   const isOwnProfile = session?.playerId === id
 
   // Free tier history limit applies to the profile owner
-  const history = profileUser
-    ? await getPersonalSessionHistory(profileUser.id, {
-        isPro: ownerIsPro,
-      })
-    : null
+  const [history, wrapped, mentorStatus] = profileUser
+    ? await Promise.all([
+        getPersonalSessionHistory(profileUser.id, {
+          isPro: ownerIsPro,
+        }),
+        getMonthlyJadeWrapped(profileUser.id),
+        getMentorStatusForUser(profileUser.id),
+      ])
+    : [null, null, null]
 
   const { player } = profile
 
@@ -102,6 +113,11 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
               {isOwnProfile ? (
                 <span className="border-[2px] border-jade-accent bg-jade-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white">
                   Your profile
+                </span>
+              ) : null}
+              {mentorStatus?.isCertifiedMentor ? (
+                <span className="border-[2px] border-jade-ink bg-jade-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-gold">
+                  COACH
                 </span>
               ) : null}
               <span className="border-[2px] border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -157,6 +173,27 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
           isAdmin={viewer.role === "ADMIN"}
           proExpiresAt={viewer.proExpiresAt?.toISOString() ?? null}
           accountName={viewer.name}
+        />
+      ) : null}
+
+      {isOwnProfile && mentorStatus ? (
+        <MentorApplicationCard initialStatus={mentorStatus} />
+      ) : null}
+
+      <PlayerEloChart
+        history={eloHistory}
+        currentRating={profile.skillRating}
+        unlocked={viewerIsPro}
+        accountName={viewer?.name}
+      />
+
+      {wrapped ? (
+        <MonthlyWrappedCard
+          playerName={player.name}
+          nickname={player.nickname}
+          wrapped={wrapped}
+          unlocked={viewerIsPro}
+          accountName={viewer?.name}
         />
       ) : null}
 

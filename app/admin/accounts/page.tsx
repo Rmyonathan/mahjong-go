@@ -1,4 +1,5 @@
 import { AccountsManager } from "@/components/admin/accounts-manager"
+import { AdminMentorsPanel } from "@/components/admin/admin-mentors-panel"
 import { prisma } from "@/lib/db"
 import { isProMembership } from "@/lib/membership"
 
@@ -31,14 +32,17 @@ export default async function AdminAccountsPage() {
   ])
 
   return (
-    <AccountsManager
-      initialUsers={users.map((user) => ({
-        ...user,
-        createdAt: user.createdAt.toISOString(),
-        proExpiresAt: user.proExpiresAt?.toISOString() ?? null,
-        isPro: isProMembership(user),
-      }))}
-      players={players}
-    />
+    <>
+      <AccountsManager
+        initialUsers={users.map((user) => ({
+          ...user,
+          createdAt: user.createdAt.toISOString(),
+          proExpiresAt: user.proExpiresAt?.toISOString() ?? null,
+          isPro: isProMembership(user),
+        }))}
+        players={players}
+      />
+      <AdminMentorsPanel />
+    </>
   )
 }

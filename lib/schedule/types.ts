@@ -16,6 +16,7 @@ export type ApiPaymentMethod = "QRIS" | "VENUE"
 export interface ApiRosterPlayer {
   bookingId: string
   userId: string
+  playerId: string | null
   name: string
   nickname: string
   badge: string

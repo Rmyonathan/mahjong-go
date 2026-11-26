@@ -53,12 +53,13 @@ export function CreateMeetModal({
   const [location, setLocation] = useState(DEFAULT_MEET_LOCATION)
   const [scoringRuleset, setScoringRuleset] =
     useState<RuleVariant>("jade-hk")
-  const [tables, setTables] = useState(1)
   const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
   const [proOnly, setProOnly] = useState(false)
   const [earlyBirdHours, setEarlyBirdHours] = useState(2)
   const [captainId, setCaptainId] = useState("")
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PUBLIC")
+  const [boardType, setBoardType] = useState<"BEGINNER" | "GUIDED">("BEGINNER")
+  const [isCertifiedMentor, setIsCertifiedMentor] = useState(false)
   const [members, setMembers] = useState<MemberOption[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +96,16 @@ export function CreateMeetModal({
     setError(null)
     setPending(false)
     setCreatedInvite(null)
+    setBoardType("BEGINNER")
+    if (!isClubOwner) {
+      void fetch("/api/mentors/apply")
+        .then(async (res) => {
+          if (!res.ok) return
+          const d = (await res.json()) as { isCertifiedMentor?: boolean }
+          setIsCertifiedMentor(Boolean(d.isCertifiedMentor))
+        })
+        .catch(() => undefined)
+    }
     if (isClubOwner) {
       void fetch("/api/members")
         .then(async (response) => {
@@ -121,7 +132,8 @@ export function CreateMeetModal({
 
   if (!open) return null
 
-  const maxSeats = tables * 4
+  const tables = 1
+  const maxSeats = 4
 
   async function submit() {
     if (!title.trim() || !date || !startTime) {
@@ -156,11 +168,14 @@ export function CreateMeetModal({
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
           location: location.trim() || DEFAULT_MEET_LOCATION,
-          boardType: "BEGINNER",
+          boardType,
           scoringRuleset: rulesetToDb(scoringRuleset),
           maxSeats,
           tables,
-          feeIdr: isClubOwner ? feeIdr : 0,
+          feeIdr:
+            isClubOwner || (isCertifiedMentor && boardType === "GUIDED")
+              ? feeIdr
+              : 0,
           proOnly: isClubOwner ? proOnly : false,
           proEarlyBirdUntil: isClubOwner ? proEarlyBirdUntil : null,
           captainId: isClubOwner && captainId ? captainId : null,
@@ -277,25 +292,18 @@ export function CreateMeetModal({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                Tables
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={6}
-                value={tables}
-                onChange={(event) =>
-                  setTables(Math.max(1, Number(event.target.value) || 1))
-                }
-                className={cn(inputClass, "font-mono")}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {maxSeats} seats · 4 players per table
+            <div className="rounded-2xl border border-[#102A20]/10 bg-white p-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Table size
               </p>
-            </label>
-            {isClubOwner ? (
+              <p className="mt-1 font-serif text-lg text-jade-ink">
+                1 table · 4 seats
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                4 players per table
+              </p>
+            </div>
+            {isClubOwner || (isCertifiedMentor && boardType === "GUIDED") ? (
               <label className="block">
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
                   Seat fee (QRIS)
@@ -316,10 +324,47 @@ export function CreateMeetModal({
               </label>
             ) : (
               <p className="rounded-2xl border border-[#102A20]/10 bg-white p-3 text-xs leading-relaxed text-muted-foreground">
-                Free player table — no booking QRIS. Only club can charge seats.
+                Free player table — no booking QRIS.{" "}
+                {isCertifiedMentor
+                  ? "Switch to Guided Table (COACH) below to charge seats."
+                  : "Only club or Certified Coaches can charge seats."}
               </p>
             )}
           </div>
+
+          {!isClubOwner && isCertifiedMentor ? (
+            <fieldset>
+              <legend className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                Table format · Certified Coach
+              </legend>
+              <div className="mt-2 flex gap-2 rounded-xl border border-[#102A20]/10 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setBoardType("BEGINNER")}
+                  className={cn(
+                    "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition",
+                    boardType === "BEGINNER"
+                      ? "bg-jade-ink text-white"
+                      : "text-jade-ink hover:bg-jade-soft/50",
+                  )}
+                >
+                  Casual Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoardType("GUIDED")}
+                  className={cn(
+                    "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition",
+                    boardType === "GUIDED"
+                      ? "bg-jade-accent text-white"
+                      : "text-jade-ink hover:bg-jade-soft/50",
+                  )}
+                >
+                  Paid Guided Table (COACH)
+                </button>
+              </div>
+            </fieldset>
+          ) : null}
 
           <fieldset>
             <legend className="font-mono text-[10px] uppercase tracking-[0.14em]">

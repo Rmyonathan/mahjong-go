@@ -9,6 +9,7 @@ import {
   Info,
   Layers,
   Medal,
+  MessageSquareHeart,
   Puzzle,
   Shield,
   Trophy,
@@ -51,6 +52,13 @@ export const CLUB_LEARN_LINKS: {
     label: "Coaching",
     subtitle: "Clips and 1-on-1 hand audits",
     icon: GraduationCap,
+  },
+  {
+    id: "hand-clinic",
+    href: "/hand-clinic",
+    label: "Hand Clinic",
+    subtitle: "Submit lost hands for coach review",
+    icon: MessageSquareHeart,
   },
   {
     id: "combos",
