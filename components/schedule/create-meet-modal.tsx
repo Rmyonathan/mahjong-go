@@ -53,6 +53,7 @@ export function CreateMeetModal({
   const [location, setLocation] = useState(DEFAULT_MEET_LOCATION)
   const [scoringRuleset, setScoringRuleset] =
     useState<RuleVariant>("jade-hk")
+  const [maxSeats, setMaxSeats] = useState<3 | 4>(4)
   const [feeIdr, setFeeIdr] = useState(DEFAULT_MEET_FEE_IDR)
   const [proOnly, setProOnly] = useState(false)
   const [earlyBirdHours, setEarlyBirdHours] = useState(2)
@@ -97,6 +98,7 @@ export function CreateMeetModal({
     setPending(false)
     setCreatedInvite(null)
     setBoardType("BEGINNER")
+    setMaxSeats(4)
     if (!isClubOwner) {
       void fetch("/api/mentors/apply")
         .then(async (res) => {
@@ -133,7 +135,6 @@ export function CreateMeetModal({
   if (!open) return null
 
   const tables = 1
-  const maxSeats = 4
 
   async function submit() {
     if (!title.trim() || !date || !startTime) {
@@ -294,14 +295,25 @@ export function CreateMeetModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-[#102A20]/10 bg-white p-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Table size
+                Table size · 1 table
               </p>
-              <p className="mt-1 font-serif text-lg text-jade-ink">
-                1 table · 4 seats
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                4 players per table
-              </p>
+              <div className="mt-2 flex gap-1.5 rounded-xl bg-[#F6F4EE] p-1">
+                {([4, 3] as const).map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setMaxSeats(count)}
+                    className={cn(
+                      "flex-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition",
+                      maxSeats === count
+                        ? "bg-jade-accent text-white"
+                        : "text-jade-ink hover:bg-jade-soft/50",
+                    )}
+                  >
+                    {count} players
+                  </button>
+                ))}
+              </div>
             </div>
             {isClubOwner || (isCertifiedMentor && boardType === "GUIDED") ? (
               <label className="block">

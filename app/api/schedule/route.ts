@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   }
 
   const tables = 1
-  const maxSeats = 4
+  const maxSeats = Number(body.maxSeats) === 3 ? 3 : 4
   const location = body.location?.trim() || DEFAULT_MEET_LOCATION
 
   const hostRow = await prisma.user.findUnique({

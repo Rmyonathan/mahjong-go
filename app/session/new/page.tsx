@@ -145,9 +145,10 @@ function NewSessionForm() {
               setConfirmedRosterIds(
                 new Set(meet.roster.map((player) => player.userId)),
               )
-              const winds = windsForSeatCount(4)
-              const roster = meet.roster.slice(0, 4)
-              setSeatCount(4)
+              const nextCount: 3 | 4 = meet.maxSeats === 3 ? 3 : 4
+              const winds = windsForSeatCount(nextCount)
+              const roster = meet.roster.slice(0, nextCount)
+              setSeatCount(nextCount)
               setSeats(
                 winds.map((wind, index) => {
                   const player = roster[index]
