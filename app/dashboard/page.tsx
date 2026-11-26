@@ -48,11 +48,10 @@ export default async function DashboardPage() {
   const [profile, history, liveSessions, nextMeet] = await Promise.all([
     user.playerId ? getPlayerProfile(user.playerId) : Promise.resolve(null),
     getPersonalSessionHistory(user.id, { isPro }),
-    getLiveSessionsForUser(user.id),
+    getLiveSessionsForUser(user.id, isClubLeader),
     getNextBookedMeet(user.id),
   ])
 
-  const live = liveSessions[0] ?? null
   const seasonPoints = profile?.seasonPoints ?? 0
   const winRate = profile?.winRateLabel ?? "—"
   const games = profile?.games ?? 0
@@ -165,27 +164,43 @@ export default async function DashboardPage() {
       </section>
 
       {/* Active / next up */}
-      <section className="mt-5">
-        {live ? (
-          <Link
-            href={`/session/live?id=${encodeURIComponent(live.id)}`}
-            className="jade-card-accent tap-press flex flex-wrap items-center justify-between gap-3 p-5"
-          >
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
-                ● Live now
-              </p>
-              <h2 className="mt-1 font-serif text-3xl leading-none">
-                {live.title}
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {boardLabel(live.boardType)} · seat wind {live.wind}
-              </p>
-            </div>
-            <span className="inline-flex h-11 items-center rounded-full bg-jade-ink px-4 text-sm font-semibold text-white">
-              Resume live table →
-            </span>
-          </Link>
+      <section className="mt-5 space-y-3">
+        {liveSessions.length > 0 ? (
+          <>
+            {liveSessions.slice(0, 3).map((live) => (
+              <Link
+                key={live.id}
+                href={`/session/live?id=${encodeURIComponent(live.id)}`}
+                className="jade-card-accent tap-press flex flex-wrap items-center justify-between gap-3 p-5"
+              >
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent">
+                    ● Live now
+                  </p>
+                  <h2 className="mt-1 font-serif text-3xl leading-none">
+                    {live.title}
+                  </h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {boardLabel(live.boardType)}
+                    {live.wind ? ` · seat wind ${live.wind}` : " · table live"}
+                  </p>
+                </div>
+                <span className="inline-flex h-11 items-center rounded-full bg-jade-ink px-4 text-sm font-semibold text-white">
+                  Resume live table →
+                </span>
+              </Link>
+            ))}
+            {liveSessions.length > 1 ? (
+              <div className="flex justify-end">
+                <Link
+                  href="/live"
+                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent hover:underline"
+                >
+                  View all live tables ({liveSessions.length}) →
+                </Link>
+              </div>
+            ) : null}
+          </>
         ) : nextMeet ? (
           <Link
             href="/schedule"

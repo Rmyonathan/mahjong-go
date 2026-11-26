@@ -191,11 +191,11 @@ export function SiteHeader() {
   return (
     <>
       <header className="site-header sticky top-0 z-40 border-b border-[#102A20]/10 bg-[#F6F4EE]/85 backdrop-blur-md">
-        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-4 sm:gap-3 sm:px-6">
-          {/* Brand — logo + title, never shrink away */}
+        <div className="mx-auto grid h-14 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 px-3 sm:h-16 sm:gap-3 sm:px-6">
+          {/* Brand — logo + title, compact on mobile to leave room for actions */}
           <Link
             href={brandHref}
-            className="tap-press z-10 flex shrink-0 items-center gap-2.5 text-jade-ink"
+            className="tap-press z-10 flex shrink-0 items-center gap-1.5 text-jade-ink sm:gap-2.5"
             aria-label="Jade Mahjong home"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -204,9 +204,9 @@ export function SiteHeader() {
               alt="Jade Mahjong"
               width={36}
               height={36}
-              className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-[#102A20]/10"
+              className="h-7 w-7 shrink-0 rounded-lg object-cover ring-1 ring-[#102A20]/10 sm:h-9 sm:w-9 sm:rounded-xl"
             />
-            <span className="font-serif text-base font-semibold tracking-tight sm:text-lg">
+            <span className="font-serif text-sm font-semibold tracking-tight sm:text-lg">
               Jade Mahjong
             </span>
           </Link>
@@ -436,7 +436,7 @@ export function SiteHeader() {
           </div>
 
           {/* Right cluster */}
-          <div className="z-10 flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+          <div className="z-10 flex shrink-0 items-center justify-end gap-1 sm:gap-2">
             {loggedIn ? (
               <>
                 <button
@@ -454,7 +454,7 @@ export function SiteHeader() {
                   type="button"
                   onClick={() => setProModalOpen(true)}
                   className={cn(
-                    "tap-press inline-flex h-9 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition sm:h-10 sm:px-3.5 sm:text-sm",
+                    "tap-press inline-flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition sm:h-10 sm:px-3.5 sm:text-sm",
                     !isProUser
                       ? "border border-jade-gold/50 bg-jade-gold/20 text-jade-ink hover:bg-jade-gold/30"
                       : proExpiringSoon
@@ -469,7 +469,7 @@ export function SiteHeader() {
                         : "Pro pricing and benefits"
                   }
                 >
-                  <Sparkles className="size-3.5 shrink-0 text-jade-gold" aria-hidden />
+                  <Sparkles className="size-3 shrink-0 text-jade-gold sm:size-3.5" aria-hidden />
                   <span className="hidden sm:inline">
                     {!isProUser
                       ? "Upgrade"
@@ -489,10 +489,10 @@ export function SiteHeader() {
                 {liveCount > 0 ? (
                   <Link
                     href={liveHref}
-                    className="tap-press inline-flex h-9 max-w-[9.5rem] items-center gap-1.5 rounded-full bg-jade-accent px-3 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10 sm:max-w-none sm:px-3.5 sm:text-sm"
+                    className="tap-press inline-flex h-8 max-w-[7.5rem] items-center gap-1 rounded-full bg-jade-accent px-2.5 text-[11px] font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10 sm:max-w-none sm:gap-1.5 sm:px-3.5 sm:text-sm"
                     title={`${liveCount} live table${liveCount === 1 ? "" : "s"}`}
                   >
-                    <span className="jade-live-pulse size-2 shrink-0 rounded-full bg-white" />
+                    <span className="jade-live-pulse size-1.5 shrink-0 rounded-full bg-white sm:size-2" />
                     <span className="truncate">
                       Live{liveCount > 1 ? ` · ${liveCount}` : ""}
                     </span>
@@ -547,14 +547,14 @@ export function SiteHeader() {
                   ) : null}
                 </div>
 
-                {/* Mobile search / live already handled; live shows above */}
+                {/* Mobile search */}
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
-                  className="tap-press hidden size-9 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink min-[380px]:grid md:hidden"
+                  className="tap-press grid size-8 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink md:hidden"
                   aria-label="Search players"
                 >
-                  <Search className="size-4" />
+                  <Search className="size-3.5" />
                 </button>
               </>
             ) : !authReady ? (

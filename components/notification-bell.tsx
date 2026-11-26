@@ -176,7 +176,7 @@ export function NotificationBell({ loggedIn }: { loggedIn: boolean }) {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="tap-press relative grid size-9 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink shadow-sm hover:bg-jade-soft sm:size-10"
+          className="tap-press relative grid size-8 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink shadow-sm hover:bg-jade-soft sm:size-10"
           aria-label="Notifications & table invites"
         >
           <Bell className="size-4" />

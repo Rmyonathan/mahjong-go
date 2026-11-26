@@ -188,24 +188,35 @@ export async function searchPersonalSessions(
   }))
 }
 
-/** LIVE session seats for this user (resume card). */
-export async function getLiveSessionsForUser(userId: string) {
-  const seats = await prisma.sessionSeat.findMany({
+/** LIVE tables for this user (captain, seated member, or admin). */
+export async function getLiveSessionsForUser(userId: string, isAdmin = false) {
+  const sessions = await prisma.gameSession.findMany({
     where: {
-      userId,
-      session: { status: "LIVE" },
+      status: "LIVE",
+      ...(isAdmin
+        ? {}
+        : {
+            OR: [
+              { captainUserId: userId },
+              { seats: { some: { userId } } },
+            ],
+          }),
     },
     include: {
-      session: { select: { id: true, title: true, startedAt: true, boardType: true } },
+      seats: {
+        where: { userId },
+        select: { wind: true },
+      },
     },
-    orderBy: { session: { startedAt: "desc" } },
+    orderBy: { startedAt: "desc" },
+    take: 6,
   })
-  return seats.map((seat) => ({
-    id: seat.session.id,
-    title: seat.session.title,
-    startedAt: seat.session.startedAt.toISOString(),
-    boardType: seat.session.boardType,
-    wind: WIND_FROM_DB[seat.wind],
+  return sessions.map((session) => ({
+    id: session.id,
+    title: session.title,
+    startedAt: session.startedAt.toISOString(),
+    boardType: session.boardType,
+    wind: session.seats[0] ? WIND_FROM_DB[session.seats[0].wind] : null,
   }))
 }
 
