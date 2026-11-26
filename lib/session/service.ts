@@ -56,6 +56,10 @@ export type CreateSessionSeatInput = {
   wind: LiveWind
   /** Registered club user id (preferred) */
   userId?: string | null
+  /** Target user id to invite (for non-admin hosts) */
+  invitedUserId?: string | null
+  /** Explicit invite flag */
+  invite?: boolean
   /** Jade Player id — resolved to a User when possible */
   playerId?: string | null
   guestName?: string | null
@@ -71,6 +75,10 @@ export type CreateSessionInput = {
   meetId?: string | null
   tournamentTableId?: string | null
   captainUserId: string
+  /** True for ADMIN (or internal tournament seeding); non-admin assigns self/confirmed roster and invites others */
+  allowDirectAssign?: boolean
+  /** Users already CONFIRMED on the linked meetId */
+  confirmedMeetUserIds?: string[]
   /** Override; otherwise copied from meet or defaults to JADE_HK */
   scoringRuleset?: "CHICKEN" | "JADE_HK"
 }
@@ -154,38 +162,107 @@ export async function createGameSession(input: CreateSessionInput) {
   )
 
   const explicitUserIds = input.seats
-    .map((seat) => seat.userId)
+    .flatMap((seat) => [seat.userId, seat.invitedUserId])
     .filter((id): id is string => Boolean(id))
+
+  const userLookup = new Map<string, { id: string; label: string }>()
   if (explicitUserIds.length > 0) {
     const found = await prisma.user.findMany({
       where: { id: { in: explicitUserIds } },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        player: { select: { nickname: true } },
+      },
     })
     if (found.length !== new Set(explicitUserIds).size) {
       throw new Error("One or more seat users were not found")
     }
+    for (const u of found) {
+      userLookup.set(u.id, {
+        id: u.id,
+        label:
+          u.player?.nickname?.trim() || u.name.split(" ")[0] || u.name,
+      })
+    }
   }
+
+  const confirmedSet = new Set(input.confirmedMeetUserIds ?? [])
+  const seenRegisteredUsers = new Set<string>()
+  const pendingInvitePlans: Array<{
+    seatOrder: number
+    inviteeUserId: string
+  }> = []
 
   const seatRows = input.seats.map((seat, index) => {
     const wind = WIND_TO_DB[seat.wind]
-    let userId: string | null = seat.userId ?? null
-    if (!userId && seat.playerId && !seat.playerId.startsWith("guest-")) {
-      userId = playerToUser.get(seat.playerId) ?? null
+    let targetUserId: string | null =
+      seat.userId ?? seat.invitedUserId ?? null
+    if (!targetUserId && seat.playerId && !seat.playerId.startsWith("guest-")) {
+      targetUserId = playerToUser.get(seat.playerId) ?? null
     }
+
+    if (targetUserId) {
+      if (seenRegisteredUsers.has(targetUserId)) {
+        throw new Error("Same player cannot sit in multiple seats")
+      }
+      seenRegisteredUsers.add(targetUserId)
+
+      const canDirectAssign =
+        Boolean(input.allowDirectAssign) ||
+        targetUserId === input.captainUserId ||
+        (!seat.invite && confirmedSet.has(targetUserId))
+
+      if (canDirectAssign) {
+        return {
+          wind,
+          seatOrder: index,
+          userId: targetUserId,
+          guestName: null,
+          tournamentEntryId: seat.tournamentEntryId ?? null,
+          netPoints: 0,
+          wins: 0,
+          selfDraws: 0,
+          dealtInCount: 0,
+        }
+      }
+
+      const targetLabel =
+        seat.nickname?.trim() ||
+        userLookup.get(targetUserId)?.label ||
+        seat.name?.trim() ||
+        "Player"
+
+      pendingInvitePlans.push({
+        seatOrder: index,
+        inviteeUserId: targetUserId,
+      })
+
+      return {
+        wind,
+        seatOrder: index,
+        userId: null,
+        guestName: `${targetLabel} (Invited)`,
+        tournamentEntryId: seat.tournamentEntryId ?? null,
+        netPoints: 0,
+        wins: 0,
+        selfDraws: 0,
+        dealtInCount: 0,
+      }
+    }
+
     const guestName =
-      userId != null
-        ? null
-        : (seat.guestName?.trim() ||
-            seat.name?.trim() ||
-            seat.nickname?.trim() ||
-            null)
-    if (!userId && !guestName) {
+      seat.guestName?.trim() ||
+      seat.name?.trim() ||
+      seat.nickname?.trim() ||
+      null
+    if (!guestName) {
       throw new Error(`Seat ${seat.wind} needs a registered user or guest name`)
     }
     return {
       wind,
       seatOrder: index,
-      userId,
+      userId: null,
       guestName,
       tournamentEntryId: seat.tournamentEntryId ?? null,
       netPoints: 0,
@@ -207,7 +284,7 @@ export async function createGameSession(input: CreateSessionInput) {
     }
   }
 
-  return prisma.gameSession.create({
+  const created = await prisma.gameSession.create({
     data: {
       title: input.title.trim() || "Jade Table",
       boardType: BOARD_TO_DB[input.board],
@@ -220,6 +297,30 @@ export async function createGameSession(input: CreateSessionInput) {
     },
     include: sessionFullInclude,
   })
+
+  if (pendingInvitePlans.length > 0) {
+    const { createSeatInvites } = await import("@/lib/session/invites")
+    const seatByOrder = new Map(
+      created.seats.map((s) => [s.seatOrder, s.id]),
+    )
+    const invites = pendingInvitePlans
+      .map((plan) => {
+        const seatId = seatByOrder.get(plan.seatOrder)
+        return seatId ? { seatId, inviteeUserId: plan.inviteeUserId } : null
+      })
+      .filter(
+        (entry): entry is { seatId: string; inviteeUserId: string } =>
+          Boolean(entry),
+      )
+
+    await createSeatInvites({
+      sessionId: created.id,
+      inviterUserId: input.captainUserId,
+      invites,
+    })
+  }
+
+  return created
 }
 
 export async function getGameSession(id: string) {

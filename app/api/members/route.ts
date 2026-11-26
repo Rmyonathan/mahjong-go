@@ -4,14 +4,27 @@ import { requireUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 
 /** Club roster for seat assignment — real User accounts (+ linked Player). */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireUser()
   } catch {
     return NextResponse.json({ error: "Login required" }, { status: 401 })
   }
 
+  const { searchParams } = new URL(request.url)
+  const q = searchParams.get("q")?.trim() || ""
+
   const users = await prisma.user.findMany({
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+            { player: { name: { contains: q, mode: "insensitive" } } },
+            { player: { nickname: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : undefined,
     orderBy: { name: "asc" },
     select: {
       id: true,

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { PlayerMembershipCard } from "@/components/players/player-membership-card"
 import { PlayerProfileEditor } from "@/components/players/player-profile-editor"
 import { PlayerProTeaser } from "@/components/players/player-pro-teaser"
 import { RecentHandsList } from "@/components/players/recent-hands-list"
@@ -10,7 +11,7 @@ import { getSessionUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { getPlayerProfile } from "@/lib/data/player-profile"
 import { getPersonalSessionHistory } from "@/lib/data/session-history"
-import { isProMembership } from "@/lib/membership"
+import { isProMembership, membershipLabelForUser } from "@/lib/membership"
 import { formatSignedPoints } from "@/lib/mock/jade-board"
 
 export const dynamic = "force-dynamic"
@@ -148,6 +149,16 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
           <Stat label="Band" value={profile.experienceBandTitle} />
         </dl>
       </article>
+
+      {isOwnProfile && viewer ? (
+        <PlayerMembershipCard
+          tierLabel={membershipLabelForUser(viewer)}
+          isPro={viewerIsPro}
+          isAdmin={viewer.role === "ADMIN"}
+          proExpiresAt={viewer.proExpiresAt?.toISOString() ?? null}
+          accountName={viewer.name}
+        />
+      ) : null}
 
       <div className="relative mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="space-y-6">

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireUser } from "@/lib/auth"
+import { getPendingSessionInviteSummary } from "@/lib/session/invites"
 import {
   getGameSession,
   logHand,
@@ -42,6 +43,16 @@ export async function POST(
     return NextResponse.json(
       { error: "Only the table captain or tournament wasit can log hands" },
       { status: 403 },
+    )
+  }
+
+  const inviteSummary = await getPendingSessionInviteSummary(id)
+  if (inviteSummary.pendingCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Waiting for invited players to join (${inviteSummary.pendingNames.join(", ")})`,
+      },
+      { status: 409 },
     )
   }
 

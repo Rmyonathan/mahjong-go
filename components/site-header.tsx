@@ -1,10 +1,18 @@
 "use client"
 
-import Link from "next/link"
+import Link, { useLinkStatus } from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
-import { ChevronDown, LogOut, Search, Shield, UserRound } from "lucide-react"
+import {
+  ChevronDown,
+  LogOut,
+  Search,
+  Shield,
+  Sparkles,
+  UserRound,
+} from "lucide-react"
 
+import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import { SearchPlayerModal } from "@/components/search-player-modal"
 import {
   CLUB_LEARN_LINKS,
@@ -23,6 +31,20 @@ type AuthUser = {
   playerId?: string | null
   isPro?: boolean
   membershipTier?: "FREE" | "PRO"
+  proExpiresAt?: string | null
+}
+
+function NavLinkPendingBar() {
+  const { pending } = useLinkStatus()
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-jade-accent transition-opacity duration-150",
+        pending ? "animate-pulse opacity-100" : "opacity-0",
+      )}
+    />
+  )
 }
 
 export function SiteHeader() {
@@ -32,6 +54,7 @@ export function SiteHeader() {
   const [authReady, setAuthReady] = useState(false)
   const [liveCount, setLiveCount] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [proModalOpen, setProModalOpen] = useState(false)
   const [clubOpen, setClubOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
@@ -61,33 +84,45 @@ export function SiteHeader() {
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([
-      fetch("/api/auth/me").then(async (response) => {
-        if (!response.ok) return null
-        const data = (await response.json()) as { user?: AuthUser | null }
-        return data.user ?? null
-      }),
-      fetch("/api/sessions").then(async (response) => {
-        if (!response.ok) return [] as Array<{ id: string }>
-        const data = (await response.json()) as {
-          liveSessions?: Array<{ id: string }>
-        }
-        return data.liveSessions ?? []
-      }),
-    ])
-      .then(([nextUser, liveSessions]) => {
+    async function loadHeaderAuth() {
+      try {
+        const meRes = await fetch("/api/auth/me")
+        const meCt = meRes.headers.get("content-type") ?? ""
+        const nextUser =
+          meRes.ok && meCt.includes("application/json")
+            ? (((await meRes.json()) as { user?: AuthUser | null }).user ?? null)
+            : null
+
         if (cancelled) return
         setUser(nextUser)
-        setLiveCount(nextUser ? liveSessions.length : 0)
+
+        if (!nextUser) {
+          setLiveCount(0)
+          setAuthReady(true)
+          return
+        }
+
+        const sessRes = await fetch("/api/sessions")
+        const sessCt = sessRes.headers.get("content-type") ?? ""
+        const liveSessions =
+          sessRes.ok && sessCt.includes("application/json")
+            ? (((await sessRes.json()) as { liveSessions?: Array<{ id: string }> })
+                .liveSessions ?? [])
+            : []
+
+        if (cancelled) return
+        setLiveCount(liveSessions.length)
         setAuthReady(true)
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setUser(null)
           setLiveCount(0)
           setAuthReady(true)
         }
-      })
+      }
+    }
+
+    void loadHeaderAuth()
     return () => {
       cancelled = true
     }
@@ -131,6 +166,16 @@ export function SiteHeader() {
       .toUpperCase() || "?"
 
   const profileHref = user?.playerId ? `/players/${user.playerId}` : "/me"
+  const isProUser = Boolean(user?.isPro || user?.role === "ADMIN")
+  const proDaysLeft =
+    user && user.role !== "ADMIN" && user.isPro && user.proExpiresAt
+      ? Math.ceil(
+          (new Date(user.proExpiresAt).getTime() - Date.now()) /
+            (24 * 60 * 60 * 1000),
+        )
+      : null
+  const proExpiringSoon =
+    proDaysLeft != null && proDaysLeft <= 7 && proDaysLeft >= 0
   const brandHref = loggedIn ? DASHBOARD_HREF : "/"
   // Always hub when multiple tables — never inflate the CTA label
   const liveHref = "/live"
@@ -175,58 +220,63 @@ export function SiteHeader() {
                 <Link
                   href={DASHBOARD_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     homeActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                   )}
                 >
                   Home
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href={SCHEDULE_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     scheduleActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                   )}
                 >
                   Schedule
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href={TOURNAMENTS_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     tourneyActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                   )}
                 >
                   Tourney
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href={LEADERBOARD_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     boardActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                   )}
                 >
                   Leaderboard
+                  <NavLinkPendingBar />
                 </Link>
                 {user?.role === "ADMIN" ? (
                   <Link
                     href="/admin/accounts"
                     className={cn(
-                      "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                      "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                       pathname.startsWith("/admin")
                         ? "bg-jade-soft text-jade-accent"
                         : "text-jade-ink/75 hover:bg-jade-soft/70 hover:text-jade-ink",
                     )}
                   >
                     Admin
+                    <NavLinkPendingBar />
                   </Link>
                 ) : null}
 
@@ -335,46 +385,50 @@ export function SiteHeader() {
                 <Link
                   href={homeHref}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     homeActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70",
                   )}
                 >
                   Home
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href={SCHEDULE_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     scheduleActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70",
                   )}
                 >
                   Schedule
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href={LEADERBOARD_HREF}
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     boardActive
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70",
                   )}
                 >
                   Leaderboard
+                  <NavLinkPendingBar />
                 </Link>
                 <Link
                   href="/about"
                   className={cn(
-                    "tap-press shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
+                    "tap-press relative shrink-0 rounded-full px-3 py-2 text-sm font-medium transition",
                     pathname === "/about" || pathname.startsWith("/about/")
                       ? "bg-jade-soft text-jade-accent"
                       : "text-jade-ink/75 hover:bg-jade-soft/70",
                   )}
                 >
                   About
+                  <NavLinkPendingBar />
                 </Link>
               </nav>
             )}
@@ -391,6 +445,42 @@ export function SiteHeader() {
                   aria-label="Search players"
                 >
                   <Search className="size-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProModalOpen(true)}
+                  className={cn(
+                    "tap-press inline-flex h-9 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition sm:h-10 sm:px-3.5 sm:text-sm",
+                    !isProUser
+                      ? "border border-jade-gold/50 bg-jade-gold/20 text-jade-ink hover:bg-jade-gold/30"
+                      : proExpiringSoon
+                        ? "bg-jade-gold text-jade-ink shadow-sm"
+                        : "border border-[#102A20]/12 bg-white text-jade-ink hover:bg-jade-soft",
+                  )}
+                  aria-label={
+                    !isProUser
+                      ? "Upgrade to Pro"
+                      : proExpiringSoon
+                        ? "Perpanjang Pro"
+                        : "Pro pricing and benefits"
+                  }
+                >
+                  <Sparkles className="size-3.5 shrink-0 text-jade-gold" aria-hidden />
+                  <span className="hidden sm:inline">
+                    {!isProUser
+                      ? "Upgrade"
+                      : proExpiringSoon
+                        ? `Perpanjang · ${proDaysLeft}d`
+                        : "Pro"}
+                  </span>
+                  <span className="sm:hidden">
+                    {!isProUser
+                      ? "Pro"
+                      : proExpiringSoon
+                        ? "Renew"
+                        : "Pro"}
+                  </span>
                 </button>
 
                 {liveCount > 0 ? (
@@ -464,16 +554,28 @@ export function SiteHeader() {
                   <Search className="size-4" />
                 </button>
               </>
+            ) : !authReady ? (
+              <span
+                aria-hidden
+                className="inline-flex h-9 w-20 animate-pulse rounded-full bg-jade-ink/10 sm:h-10"
+              />
             ) : (
-              <Link
-                href="/login"
-                className={cn(
-                  "tap-press inline-flex h-9 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10",
-                  !authReady && "opacity-70",
-                )}
-              >
-                Sign In
-              </Link>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => setProModalOpen(true)}
+                  className="tap-press inline-flex h-9 items-center gap-1 rounded-full border border-jade-gold/50 bg-jade-gold/15 px-2.5 text-xs font-semibold text-jade-ink hover:bg-jade-gold/25 sm:h-10 sm:px-3.5 sm:text-sm"
+                >
+                  <Sparkles className="size-3.5 shrink-0 text-jade-gold" aria-hidden />
+                  <span>Pricing</span>
+                </button>
+                <Link
+                  href="/login"
+                  className="tap-press inline-flex h-9 items-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white shadow-[0_6px_18px_-6px_rgba(22,121,76,0.55)] sm:h-10"
+                >
+                  Sign In
+                </Link>
+              </div>
             )}
           </div>
         </div>
@@ -484,6 +586,14 @@ export function SiteHeader() {
         onClose={() => setSearchOpen(false)}
         isPro={Boolean(user?.isPro || user?.role === "ADMIN")}
         accountName={user?.name}
+      />
+
+      <ProPerkModal
+        open={proModalOpen}
+        onClose={() => setProModalOpen(false)}
+        accountName={user?.name}
+        mode={user?.isPro && user?.role !== "ADMIN" ? "renew" : "upgrade"}
+        expiresAt={user?.proExpiresAt}
       />
     </>
   )

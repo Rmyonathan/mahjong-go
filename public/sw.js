@@ -1,12 +1,10 @@
-/* Jade Mahjong service worker — static + tile cache; APIs always network. */
+/* Jade Mahjong service worker — static + tile cache; HTML/APIs always network. */
 /* EDIT HERE — bump CACHE_VERSION after major static asset changes. */
-const CACHE_VERSION = "jade-pwa-v1"
+const CACHE_VERSION = "jade-pwa-v2"
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const TILE_CACHE = `${CACHE_VERSION}-tiles`
 
 const PRECACHE_URLS = [
-  "/",
-  "/dashboard",
   "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -58,10 +56,9 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // App shell + icons + manifest: stale-while-revalidate.
+  // Static app assets + icons + manifest: stale-while-revalidate.
+  // Never cache dynamic HTML routes ("/", "/dashboard") so refreshes always reflect live auth/data.
   if (
-    url.pathname === "/" ||
-    url.pathname === "/dashboard" ||
     url.pathname === "/manifest.json" ||
     url.pathname.startsWith("/icons/") ||
     url.pathname === "/jade.png" ||

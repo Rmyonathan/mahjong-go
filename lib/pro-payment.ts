@@ -34,10 +34,14 @@ function waBookingUrl(text: string) {
 
 export { WHATSAPP_BOOKING_DISPLAY }
 
-export function whatsAppProConfirmUrl(accountName?: string) {
+export function whatsAppProConfirmUrl(
+  accountName?: string,
+  options?: { renew?: boolean },
+) {
   const name = accountName?.trim() || "(isi nama akun)"
+  const action = options?.renew ? "perpanjang Pro 30 hari" : "aktifkan Pro 30 hari"
   return waAppUrl(
-    `Halo Jade Mahjong — saya sudah transfer Pro ${formatQrisIdr(PRO_AMOUNT_IDR)} via QRIS. Mohon aktifkan Pro 30 hari. Nama akun: ${name}`,
+    `Halo Jade Mahjong — saya sudah transfer Pro ${formatQrisIdr(PRO_AMOUNT_IDR)} via QRIS. Mohon ${action}. Nama akun: ${name}`,
   )
 }
 

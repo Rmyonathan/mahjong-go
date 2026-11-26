@@ -26,8 +26,6 @@ export async function POST(request: Request, { params }: Params) {
     inviteCode?: string
     inviteCodes?: string[]
   }
-  const paymentMethod: PaymentMethod =
-    body.paymentMethod === "VENUE" ? "VENUE" : "QRIS"
   const inviteCodes = Array.from(
     new Set(
       [...(body.inviteCodes ?? []), body.inviteCode]
@@ -84,13 +82,15 @@ export async function POST(request: Request, { params }: Params) {
     })
     const isFull = confirmedCount >= meet.maxSeats
     const status = isFull ? "WAITLIST" : "PENDING"
+    const paymentMethod: PaymentMethod | null =
+      isFull || meet.feeIdr <= 0 ? null : "QRIS"
 
     const booking = existing
       ? await tx.booking.update({
           where: { id: existing.id },
           data: {
             status,
-            paymentMethod: isFull ? null : paymentMethod,
+            paymentMethod,
             seatNumber: null,
             checkInCode: null,
           },
@@ -100,7 +100,7 @@ export async function POST(request: Request, { params }: Params) {
             meetId,
             userId: user.id,
             status,
-            paymentMethod: isFull ? null : paymentMethod,
+            paymentMethod,
             seatNumber: null,
             checkInCode: null,
           },

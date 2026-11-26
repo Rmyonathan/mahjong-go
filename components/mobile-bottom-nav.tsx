@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link, { useLinkStatus } from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useState } from "react"
 import {
@@ -34,6 +34,7 @@ function MobileBottomNavInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [liveCount, setLiveCount] = useState(0)
   const [liveHref, setLiveHref] = useState("/live")
   const [playOpen, setPlayOpen] = useState(false)
@@ -45,6 +46,7 @@ function MobileBottomNavInner() {
   const tvMode = searchParams.get("tv") === "1"
   const [scanModalOpen, setScanModalOpen] = useState(false)
   const [meetModalOpen, setMeetModalOpen] = useState(false)
+  const [bookSeatModalOpen, setBookSeatModalOpen] = useState(false)
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false)
 
@@ -52,6 +54,7 @@ function MobileBottomNavInner() {
     tvMode ||
     scanModalOpen ||
     meetModalOpen ||
+    bookSeatModalOpen ||
     inviteModalOpen ||
     tournamentModalOpen ||
     pathname.startsWith("/calculator") ||
@@ -62,6 +65,7 @@ function MobileBottomNavInner() {
     const sync = () => {
       setScanModalOpen(document.body.dataset.scanModal === "1")
       setMeetModalOpen(document.body.dataset.createMeetModal === "1")
+      setBookSeatModalOpen(document.body.dataset.bookSeatModal === "1")
       setInviteModalOpen(document.body.dataset.inviteModal === "1")
       setTournamentModalOpen(document.body.dataset.tournamentModal === "1")
     }
@@ -72,6 +76,7 @@ function MobileBottomNavInner() {
       attributeFilter: [
         "data-scan-modal",
         "data-create-meet-modal",
+        "data-book-seat-modal",
         "data-invite-modal",
         "data-tournament-modal",
       ],
@@ -98,34 +103,47 @@ function MobileBottomNavInner() {
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([
-      fetch("/api/auth/me").then(async (response) => {
-        if (!response.ok) return null
-        const data = (await response.json()) as {
-          user?: AuthUser | null
-        }
-        return data.user ?? null
-      }),
-      fetch("/api/sessions").then(async (response) => {
-        if (!response.ok) return [] as Array<{ id: string }>
-        const data = (await response.json()) as {
-          liveSessions?: Array<{ id: string }>
-        }
-        return data.liveSessions ?? []
-      }),
-    ])
-      .then(([nextUser, liveSessions]) => {
+    async function loadNavState() {
+      try {
+        const meRes = await fetch("/api/auth/me")
+        const meCt = meRes.headers.get("content-type") ?? ""
+        const nextUser =
+          meRes.ok && meCt.includes("application/json")
+            ? (((await meRes.json()) as { user?: AuthUser | null }).user ?? null)
+            : null
+
         if (cancelled) return
         setUser(nextUser)
-        setLiveCount(nextUser ? liveSessions.length : 0)
+
+        if (!nextUser) {
+          setLiveCount(0)
+          setLiveHref("/live")
+          setAuthReady(true)
+          return
+        }
+
+        const sessRes = await fetch("/api/sessions")
+        const sessCt = sessRes.headers.get("content-type") ?? ""
+        const liveSessions =
+          sessRes.ok && sessCt.includes("application/json")
+            ? (((await sessRes.json()) as { liveSessions?: Array<{ id: string }> })
+                .liveSessions ?? [])
+            : []
+
+        if (cancelled) return
+        setLiveCount(liveSessions.length)
         setLiveHref("/live")
-      })
-      .catch(() => {
+        setAuthReady(true)
+      } catch {
         if (!cancelled) {
           setUser(null)
           setLiveCount(0)
+          setAuthReady(true)
         }
-      })
+      }
+    }
+
+    void loadNavState()
     return () => {
       cancelled = true
     }
@@ -149,6 +167,18 @@ function MobileBottomNavInner() {
   }
 
   if (hideChrome) return null
+
+  if (!authReady) {
+    return (
+      <nav
+        className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[#102A20]/10 bg-white/90 backdrop-blur-lg md:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-hidden
+      >
+        <div className="mx-auto h-[4.25rem] max-w-lg" />
+      </nav>
+    )
+  }
 
   // EDIT HERE — bottom tab destinations
   const homeHref = loggedIn ? DASHBOARD_HREF : "/"
@@ -403,6 +433,25 @@ function MobileBottomNavInner() {
   )
 }
 
+function TabLinkPendingIndicator({ active }: { active: boolean }) {
+  const { pending } = useLinkStatus()
+  if (!pending) return null
+  return (
+    <>
+      {!active ? (
+        <span
+          aria-hidden
+          className="absolute top-0 h-1 w-6 animate-pulse rounded-full bg-jade-accent"
+        />
+      ) : null}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-2 inset-y-0.5 rounded-xl bg-jade-accent/10 animate-pulse"
+      />
+    </>
+  )
+}
+
 function TabLink({
   href,
   label,
@@ -422,6 +471,7 @@ function TabLink({
         active ? "text-jade-accent" : "text-jade-ink/55",
       )}
     >
+      <TabLinkPendingIndicator active={active} />
       {active ? (
         <span className="absolute top-0 h-1 w-5 rounded-full bg-jade-accent" />
       ) : null}

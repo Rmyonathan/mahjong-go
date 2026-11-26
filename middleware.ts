@@ -84,7 +84,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (!session && !isPublicPath(pathname)) {
+  const isPublicSessionsRead =
+    request.method === "GET" &&
+    (pathname === "/api/sessions" || pathname === "/api/session-invites")
+
+  if (!session && !isPublicPath(pathname) && !isPublicSessionsRead) {
     const login = new URL("/login", request.url)
     login.searchParams.set("next", `${pathname}${search}`)
     return NextResponse.redirect(login)

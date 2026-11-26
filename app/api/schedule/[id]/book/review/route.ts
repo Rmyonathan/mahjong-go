@@ -153,7 +153,8 @@ export async function POST(request: Request, { params }: Params) {
           status: "CONFIRMED",
           seatNumber,
           checkInCode: makeCheckInCode(meetId),
-          paymentMethod: booking.paymentMethod ?? "VENUE",
+          paymentMethod:
+            booking.paymentMethod ?? (meet.feeIdr > 0 ? "QRIS" : null),
         },
       })
 

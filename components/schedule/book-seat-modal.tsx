@@ -38,25 +38,28 @@ export function BookSeatModal({
   onConfirm: (method: ApiPaymentMethod) => Promise<ConfirmResult>
   accountName?: string
 }) {
-  const [method, setMethod] = useState<ApiPaymentMethod>("QRIS")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ConfirmResult | null>(null)
 
   useEffect(() => {
-    if (!open) {
-      setResult(null)
-      setMethod("VENUE")
-      setError(null)
-      setPending(false)
+    if (open) {
+      document.body.dataset.bookSeatModal = "1"
+    } else {
+      delete document.body.dataset.bookSeatModal
+    }
+    return () => {
+      delete document.body.dataset.bookSeatModal
     }
   }, [open])
 
   useEffect(() => {
-    if (!open || !meet) return
-    if (meet.feeIdr > 0) setMethod("QRIS")
-    else setMethod("VENUE")
-  }, [open, meet])
+    if (!open) {
+      setResult(null)
+      setError(null)
+      setPending(false)
+    }
+  }, [open])
 
   if (!open || !meet) return null
 
@@ -78,7 +81,7 @@ export function BookSeatModal({
     setPending(true)
     setError(null)
     try {
-      const next = await onConfirm(method)
+      const next = await onConfirm("QRIS")
       setResult(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Booking failed")
@@ -88,14 +91,19 @@ export function BookSeatModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[75] flex items-end justify-center sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Close booking modal"
-        className="absolute inset-0 bg-jade-ink/55"
+        className="absolute inset-0 bg-jade-ink/55 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-[#102A20]/15 bg-[#F6F4EE] shadow-[0_24px_60px_-20px_rgba(16,42,32,0.45)] sm:mx-4 sm:rounded-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="book-seat-title"
+        className="relative z-10 flex max-h-[min(90dvh,680px)] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#102A20]/15 bg-[#F6F4EE] shadow-[0_24px_60px_-20px_rgba(16,42,32,0.45)] sm:rounded-2xl"
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-[#102A20]/10 px-4 py-3">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -107,20 +115,21 @@ export function BookSeatModal({
                     ? "Check-in ticket"
                     : "Confirm seat"}
             </p>
-            <h2 className="font-serif text-2xl">
+            <h2 id="book-seat-title" className="font-serif text-2xl">
               {result ? "Request sent" : "Book seat"}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close booking modal"
             className="grid size-9 place-items-center rounded-full border border-[#102A20]/12 bg-white"
           >
             <X className="size-4" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pb-28 sm:p-5 sm:pb-28">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
           {!result ? (
             <>
               <div className="rounded-2xl border border-[#102A20]/10 bg-white p-4">
@@ -160,39 +169,17 @@ export function BookSeatModal({
                 </p>
               </div>
 
-              <fieldset>
-                <legend className="font-mono text-[10px] uppercase tracking-[0.16em]">
-                  Payment method
-                </legend>
-                <div className="mt-2 flex flex-col gap-2">
-                  {(
-                    [
-                      ...(qrisOffered
-                        ? ([["QRIS", "Pay via QRIS Jade"]] as const)
-                        : []),
-                      ["VENUE", "Pay at venue"],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setMethod(id)}
-                      className={cn(
-                        "rounded-xl border px-3 py-3 text-left font-mono text-[11px] uppercase tracking-[0.14em] transition",
-                        method === id
-                          ? "border-jade-accent bg-jade-accent text-white"
-                          : "border-[#102A20]/12 bg-white hover:bg-jade-soft/50",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              {method === "QRIS" && qrisOffered ? (
-                <>
-                  <StaticBookingQris amountIdr={feeIdr} size={200} />
+              {qrisOffered ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                      Payment · QRIS Jade
+                    </p>
+                    <span className="rounded-full bg-jade-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-accent">
+                      QRIS only
+                    </span>
+                  </div>
+                  <StaticBookingQris amountIdr={feeIdr} size={188} />
                   <a
                     href={waUrl}
                     target="_blank"
@@ -201,8 +188,12 @@ export function BookSeatModal({
                   >
                     Konfirmasi via {WHATSAPP_BOOKING_DISPLAY}
                   </a>
-                </>
-              ) : null}
+                </div>
+              ) : (
+                <p className="rounded-2xl border border-[#102A20]/10 bg-white px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                  Free player table · no payment required.
+                </p>
+              )}
 
               {error ? (
                 <p className="rounded-xl bg-jade-red/10 px-3 py-2 text-sm text-jade-red">
@@ -221,7 +212,7 @@ export function BookSeatModal({
                 code once they accept — not before.
               </p>
               <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                Pay via {method === "QRIS" ? "QRIS" : "venue"} · {meet.whenLabel}
+                {qrisOffered ? `Pay via QRIS · ${meet.whenLabel}` : meet.whenLabel}
               </p>
             </div>
           ) : result.kind === "waitlist" ? (
@@ -251,8 +242,8 @@ export function BookSeatModal({
           )}
         </div>
 
-        {/* Sticky action — always visible OK / Request */}
-        <div className="absolute inset-x-0 bottom-0 border-t border-[#102A20]/10 bg-[#F6F4EE]/95 px-4 py-3 backdrop-blur-sm">
+        {/* Sticky action — always visible above safe-area */}
+        <div className="shrink-0 border-t border-[#102A20]/10 bg-[#F6F4EE]/95 px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
           {!result ? (
             <button
               type="button"

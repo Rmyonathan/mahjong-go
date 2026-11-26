@@ -113,6 +113,8 @@ model User {
   panitiaTournaments  Tournament[]      @relation("TournamentPanitia")
   wasitTournaments    Tournament[]      @relation("TournamentWasit")
   tournamentStaff     TournamentStaff[]
+  sentSeatInvites     SessionSeatInvite[] @relation("SeatInviteSender")
+  receivedSeatInvites SessionSeatInvite[] @relation("SeatInviteRecipient")
 }
 
 model Player {
@@ -203,8 +205,9 @@ model GameSession {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  seats SessionSeat[]
-  hands HandRecord[]
+  seats       SessionSeat[]
+  hands       HandRecord[]
+  seatInvites SessionSeatInvite[]
 
   @@index([status, startedAt])
   @@index([meetId])
@@ -227,10 +230,29 @@ model SessionSeat {
 
   wonHands   HandRecord[] @relation("HandWinnerSeat")
   dealtHands HandRecord[] @relation("HandDealtInSeat")
+  invite     SessionSeatInvite?
 
   @@unique([sessionId, wind])
   @@unique([sessionId, seatOrder])
   @@index([userId])
+}
+
+model SessionSeatInvite {
+  id            String      @id @default(cuid())
+  sessionId     String
+  session       GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  seatId        String      @unique
+  seat          SessionSeat @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  inviterUserId String
+  inviter       User        @relation("SeatInviteSender", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  inviteeUserId String
+  invitee       User        @relation("SeatInviteRecipient", fields: [inviteeUserId], references: [id], onDelete: Cascade)
+  status        String      @default("PENDING")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([sessionId, inviteeUserId])
+  @@index([inviteeUserId, status])
 }
 
 model HandRecord {

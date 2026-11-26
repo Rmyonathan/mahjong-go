@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { KeyRound, Search } from "lucide-react"
 
+import { JadePageLoader } from "@/components/jade-page-loader"
 import { BookSeatModal } from "@/components/schedule/book-seat-modal"
 import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
 import { InviteCodeModal } from "@/components/schedule/invite-code-modal"
@@ -40,9 +41,7 @@ export default function SchedulePage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
-          <p className="text-sm text-muted-foreground">Loading schedule…</p>
-        </main>
+        <JadePageLoader kanji="約" label="Loading schedule…" showCards />
       }
     >
       <SchedulePageInner />
@@ -61,7 +60,10 @@ function SchedulePageInner() {
   const [membershipTier, setMembershipTier] = useState<"FREE" | "PRO">("FREE")
   const [accountName, setAccountName] = useState("")
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const reqIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const [selectedYmd, setSelectedYmd] = useState<string | null>(null)
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all")
   const [query, setQuery] = useState("")
@@ -79,17 +81,34 @@ function SchedulePageInner() {
   const latestInvite = inviteCodes[inviteCodes.length - 1] ?? null
 
   const refresh = useCallback(async () => {
+    const reqId = ++reqIdRef.current
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setError(null)
+    setRefreshing(true)
     try {
       const params = new URLSearchParams()
       if (inviteCodes.length) params.set("codes", inviteCodes.join(","))
       if (query.trim()) params.set("q", query.trim())
       const qs = params.toString()
-      const [scheduleRes, meRes, liveRes] = await Promise.all([
-        fetch(`/api/schedule${qs ? `?${qs}` : ""}`),
-        fetch("/api/auth/me"),
-        fetch("/api/sessions"),
+
+      const [scheduleRes, meRes] = await Promise.all([
+        fetch(`/api/schedule${qs ? `?${qs}` : ""}`, {
+          signal: controller.signal,
+        }),
+        fetch("/api/auth/me", { signal: controller.signal }).catch(() => null),
       ])
+
+      if (reqId !== reqIdRef.current) return
+
+      const scheduleCt = scheduleRes.headers.get("content-type") ?? ""
+      if (!scheduleCt.includes("application/json")) {
+        setError("Could not load schedule")
+        return
+      }
+
       const schedule = (await scheduleRes.json()) as {
         meets?: ApiMeet[]
         viewer?: ScheduleViewer | null
@@ -99,42 +118,72 @@ function SchedulePageInner() {
         setError(schedule.error ?? "Could not load schedule")
         return
       }
+
       setMeets(schedule.meets ?? [])
       setViewer(schedule.viewer ?? null)
 
-      if (meRes.ok) {
-        const me = (await meRes.json()) as {
-          user?: {
-            membershipTier?: "FREE" | "PRO"
-            isPro?: boolean
-            role?: string
-            name?: string
-          } | null
+      if (meRes && meRes.ok) {
+        try {
+          const meCt = meRes.headers.get("content-type") ?? ""
+          if (meCt.includes("application/json")) {
+            const me = (await meRes.json()) as {
+              user?: {
+                membershipTier?: "FREE" | "PRO"
+                isPro?: boolean
+                role?: string
+                name?: string
+              } | null
+            }
+            if (me.user?.isPro || me.user?.role === "ADMIN") {
+              setMembershipTier("PRO")
+            } else if (me.user?.membershipTier) {
+              setMembershipTier(me.user.membershipTier)
+            }
+            if (me.user?.name) setAccountName(me.user.name)
+          }
+        } catch {
+          /* ignore secondary auth profile parse error */
         }
-        if (me.user?.isPro || me.user?.role === "ADMIN") {
-          setMembershipTier("PRO")
-        } else if (me.user?.membershipTier) {
-          setMembershipTier(me.user.membershipTier)
-        }
-        if (me.user?.name) setAccountName(me.user.name)
       }
 
-      if (liveRes.ok) {
-        const live = (await liveRes.json()) as {
-          liveSessions?: Array<{ id: string; meetId: string | null }>
-        }
-        const map: Record<string, string> = {}
-        for (const session of live.liveSessions ?? []) {
-          if (session.meetId) map[session.meetId] = session.id
-        }
-        setLiveByMeetId(map)
-      } else {
+      if (!schedule.viewer) {
         setLiveByMeetId({})
+        return
       }
-    } catch {
-      setError("Network error loading schedule")
+
+      try {
+        const liveRes = await fetch("/api/sessions", {
+          signal: controller.signal,
+        })
+        if (reqId !== reqIdRef.current) return
+        const liveCt = liveRes.headers.get("content-type") ?? ""
+        if (liveRes.ok && liveCt.includes("application/json")) {
+          const live = (await liveRes.json()) as {
+            liveSessions?: Array<{ id: string; meetId: string | null }>
+          }
+          const map: Record<string, string> = {}
+          for (const session of live.liveSessions ?? []) {
+            if (session.meetId) map[session.meetId] = session.id
+          }
+          setLiveByMeetId(map)
+        } else {
+          setLiveByMeetId({})
+        }
+      } catch {
+        if (reqId === reqIdRef.current) {
+          setLiveByMeetId({})
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
+      if (reqId === reqIdRef.current) {
+        setError("Network error loading schedule")
+      }
     } finally {
-      setLoading(false)
+      if (reqId === reqIdRef.current && !controller.signal.aborted) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }, [inviteCodes, query])
 
@@ -160,6 +209,9 @@ function SchedulePageInner() {
   useEffect(() => {
     if (!invitesReady) return
     void refresh()
+    return () => {
+      abortRef.current?.abort()
+    }
   }, [refresh, invitesReady])
 
   function unlockInvite(code: string) {
@@ -306,7 +358,7 @@ function SchedulePageInner() {
     const response = await fetch(`/api/schedule/${meetId}/book`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod: "VENUE" }),
+      body: JSON.stringify({}),
     })
     const data = (await response.json()) as { error?: string }
     if (!response.ok) {
@@ -318,11 +370,7 @@ function SchedulePageInner() {
 
   if (loading) {
     return (
-      <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          Loading schedule…
-        </p>
-      </main>
+      <JadePageLoader kanji="約" label="Loading schedule…" showCards />
     )
   }
 
@@ -532,6 +580,17 @@ function SchedulePageInner() {
       </div>
 
       <div className="jade-divider mt-6" />
+
+      {refreshing ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-4 inline-flex items-center gap-2 rounded-full border border-jade-accent/25 bg-jade-soft/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-accent"
+        >
+          <span className="jade-boot-pip size-1.5 rounded-full bg-jade-accent" />
+          Updating schedule…
+        </div>
+      ) : null}
 
       {error ? (
         <p className="mt-6 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">

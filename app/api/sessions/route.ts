@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getSessionUser, requireUser } from "@/lib/auth"
+import { prisma } from "@/lib/db"
 import { userCanLaunchMeetLive } from "@/lib/schedule/meet-service"
 import {
   createGameSession,
@@ -79,12 +80,26 @@ export async function POST(request: Request) {
       }
     }
 
+    let confirmedMeetUserIds: string[] = []
+    if (meetId && user.role !== "ADMIN") {
+      const confirmedRows = await prisma.booking.findMany({
+        where: { meetId, status: "CONFIRMED" },
+        select: { userId: true },
+      })
+      confirmedMeetUserIds = confirmedRows.map((row) => row.userId)
+    }
+
     const session = await createGameSession({
       title,
       board,
       seats,
       meetId,
-      captainUserId: body.captainUserId?.trim() || user.id,
+      captainUserId:
+        user.role === "ADMIN" && body.captainUserId?.trim()
+          ? body.captainUserId.trim()
+          : user.id,
+      allowDirectAssign: user.role === "ADMIN",
+      confirmedMeetUserIds,
     })
     return NextResponse.json(
       { session: serializeSession(session), resumed: false },

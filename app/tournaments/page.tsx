@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 
+import { JadePageLoader } from "@/components/jade-page-loader"
 import { CreateTournamentModal } from "@/components/tournaments/create-tournament-modal"
 import { TournamentRulesPdfPanel } from "@/components/tournaments/tournament-rules-pdf-panel"
 import {
@@ -99,9 +100,11 @@ function TournamentsPageInner() {
       <div className="jade-divider mt-6" />
 
       {loading ? (
-        <p className="mt-8 font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          Loading tournaments…
-        </p>
+        <JadePageLoader
+          kanji="盃"
+          label="Loading tournaments…"
+          className="py-12"
+        />
       ) : null}
       {error ? (
         <p className="mt-8 font-mono text-xs uppercase tracking-[0.16em] text-jade-red">
@@ -213,11 +216,7 @@ export default function TournamentsPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
-          <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-            Loading tournaments…
-          </p>
-        </main>
+        <JadePageLoader kanji="盃" label="Loading tournaments…" />
       }
     >
       <TournamentsPageInner />

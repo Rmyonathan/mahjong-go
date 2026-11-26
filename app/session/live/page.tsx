@@ -66,12 +66,16 @@ function LiveSessionInner() {
   const [busy, setBusy] = useState(false)
   const [isCaptain, setIsCaptain] = useState(false)
   const [canLogHands, setCanLogHands] = useState(false)
+  const [pendingInvitesCount, setPendingInvitesCount] = useState(0)
+  const [pendingInviteNames, setPendingInviteNames] = useState<string[]>([])
 
   const refresh = useCallback(async (id: string) => {
     const response = await fetch(`/api/sessions/${id}`)
     const data = (await response.json()) as {
       error?: string
       session?: LiveSession & { captainUserId?: string }
+      pendingInvitesCount?: number
+      pendingInviteNames?: string[]
       viewer?: {
         id: string
         isCaptain?: boolean
@@ -90,6 +94,8 @@ function LiveSessionInner() {
     setSession(data.session)
     setIsCaptain(Boolean(data.viewer?.isCaptain))
     setCanLogHands(Boolean(data.viewer?.canLogHands))
+    setPendingInvitesCount(data.pendingInvitesCount ?? 0)
+    setPendingInviteNames(data.pendingInviteNames ?? [])
     return data.session
   }, [router])
 
@@ -201,8 +207,20 @@ function LiveSessionInner() {
     })
   }
 
+  useEffect(() => {
+    if (!session || session.status !== "live" || pendingInvitesCount === 0 || !sessionId) {
+      return
+    }
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refresh(sessionId).catch(() => undefined)
+      }
+    }, 4000)
+    return () => window.clearInterval(id)
+  }, [session, sessionId, pendingInvitesCount, refresh])
+
   function onDraw() {
-    if (!session || session.status !== "live" || busy) return
+    if (!session || session.status !== "live" || busy || pendingInvitesCount > 0) return
     void postHand({
       winnerSeatIndex: -1,
       method: "draw",
@@ -316,6 +334,7 @@ function LiveSessionInner() {
     (session as LiveSession & { tournamentId?: string | null }).tournamentId ??
     null
   const canControlTable = isCaptain || canLogHands
+  const waitingForInvites = pendingInvitesCount > 0
 
   if (session.status === "finished") {
     return (
@@ -446,6 +465,29 @@ function LiveSessionInner() {
         })}
       </section>
 
+      {waitingForInvites ? (
+        <div
+          role="status"
+          className="mt-5 flex flex-col gap-2 rounded-2xl border border-jade-gold/50 bg-jade-gold/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="jade-live-pulse size-2 shrink-0 rounded-full bg-jade-gold" />
+            <p className="text-sm text-jade-ink">
+              Waiting for all invited players to join (
+              <strong>{pendingInviteNames.join(", ")}</strong>) before
+              starting.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => sessionId && void refresh(sessionId)}
+            className="tap-press shrink-0 self-start rounded-full border border-[#102A20]/15 bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] sm:self-auto"
+          >
+            Refresh
+          </button>
+        </div>
+      ) : null}
+
       <section
         className="jade-card-accent mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center"
         aria-label="Primary actions"
@@ -453,7 +495,7 @@ function LiveSessionInner() {
         <div className="relative inline-flex min-w-[16rem] flex-1 sm:flex-none">
           <button
             type="button"
-            disabled={busy || !canControlTable}
+            disabled={busy || !canControlTable || waitingForInvites}
             onClick={() => setHandLogOpen(true)}
             className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
           >
@@ -462,7 +504,7 @@ function LiveSessionInner() {
         </div>
         <button
           type="button"
-          disabled={busy || !canControlTable}
+          disabled={busy || !canControlTable || waitingForInvites}
           onClick={() => setCameraScanOpen(true)}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
@@ -470,7 +512,7 @@ function LiveSessionInner() {
         </button>
         <button
           type="button"
-          disabled={busy || !canControlTable}
+          disabled={busy || !canControlTable || waitingForInvites}
           onClick={onDraw}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requireUser } from "@/lib/auth"
+import { getPendingSessionInviteSummary } from "@/lib/session/invites"
 import { getGameSession, serializeSession } from "@/lib/session/service"
 import { userCanLogLinkedTournamentSession } from "@/lib/tournaments/session-access"
 
@@ -28,9 +29,12 @@ export async function GET(
   )
   const isCaptain =
     user.id === session.captainUserId || user.role === "ADMIN"
+  const inviteSummary = await getPendingSessionInviteSummary(id)
 
   return NextResponse.json({
     session: serializeSession(session),
+    pendingInvitesCount: inviteSummary.pendingCount,
+    pendingInviteNames: inviteSummary.pendingNames,
     viewer: {
       id: user.id,
       name: user.name,

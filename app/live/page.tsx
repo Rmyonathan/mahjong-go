@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 
+import { JadePageLoader } from "@/components/jade-page-loader"
 import { formatElapsed, WIND_META, type LiveWind } from "@/lib/session/live-demo"
 import { formatSignedPoints } from "@/lib/mock/jade-board"
 import { cn } from "@/lib/utils"
@@ -31,6 +32,17 @@ type LiveTableCard = {
   seats: LiveSeatSummary[]
 }
 
+type PendingInvite = {
+  id: string
+  sessionId: string
+  sessionTitle: string
+  boardType: string
+  seatId: string
+  wind: string
+  inviterName: string
+  createdAt: string
+}
+
 function boardLabel(boardType: string) {
   switch (boardType) {
     case "BEGINNER":
@@ -52,6 +64,8 @@ function windKey(wind: string): LiveWind {
 export default function LiveTablesPage() {
   const router = useRouter()
   const [tables, setTables] = useState<LiveTableCard[]>([])
+  const [invites, setInvites] = useState<PendingInvite[]>([])
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{
     id: string
     name: string
@@ -64,7 +78,10 @@ export default function LiveTablesPage() {
   const refresh = useCallback(async () => {
     setError(null)
     try {
-      const response = await fetch("/api/sessions")
+      const [response, invitesRes] = await Promise.all([
+        fetch("/api/sessions"),
+        fetch("/api/session-invites").catch(() => null),
+      ])
       if (response.status === 401) {
         router.replace(`/login?next=${encodeURIComponent("/live")}`)
         return
@@ -84,12 +101,59 @@ export default function LiveTablesPage() {
       }
       setViewer(data.viewer)
       setTables(data.liveSessions ?? [])
+
+      if (invitesRes && invitesRes.ok) {
+        const invCt = invitesRes.headers.get("content-type") ?? ""
+        if (invCt.includes("application/json")) {
+          const invData = (await invitesRes.json()) as {
+            invites?: PendingInvite[]
+          }
+          setInvites(invData.invites ?? [])
+        }
+      }
     } catch {
       setError("Network error loading live tables")
     } finally {
       setLoading(false)
     }
   }, [router])
+
+  async function respondInvite(
+    invite: PendingInvite,
+    action: "accept" | "decline",
+  ) {
+    setInviteBusyId(invite.id)
+    setError(null)
+    try {
+      const response = await fetch(
+        `/api/session-invites/${encodeURIComponent(invite.id)}/respond`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      )
+      const data = (await response.json().catch(() => ({}))) as {
+        sessionId?: string
+        error?: string
+      }
+      if (!response.ok) {
+        setError(data.error ?? "Could not update invite")
+        return
+      }
+      setInvites((prev) => prev.filter((item) => item.id !== invite.id))
+      if (action === "accept") {
+        router.push(
+          `/session/live?id=${encodeURIComponent(data.sessionId ?? invite.sessionId)}`,
+        )
+        router.refresh()
+      }
+    } catch {
+      setError("Network error responding to invite")
+    } finally {
+      setInviteBusyId(null)
+    }
+  }
 
   useEffect(() => {
     void refresh()
@@ -101,13 +165,7 @@ export default function LiveTablesPage() {
   }, [])
 
   if (loading) {
-    return (
-      <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          Loading live tables…
-        </p>
-      </main>
-    )
+    return <JadePageLoader kanji="卓" label="Loading live tables…" />
   }
 
   return (
@@ -152,6 +210,62 @@ export default function LiveTablesPage() {
         <p className="mt-6 font-mono text-xs uppercase tracking-[0.12em] text-jade-red">
           {error}
         </p>
+      ) : null}
+
+      {invites.length > 0 ? (
+        <section className="relative mt-6 space-y-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-jade-accent">
+            Pending table invites
+          </p>
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {invites.map((invite) => {
+              const wind = windKey(invite.wind)
+              const busy = inviteBusyId === invite.id
+              return (
+                <li
+                  key={invite.id}
+                  className="jade-card-accent flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-accent px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-white">
+                        <span className="jade-live-pulse size-1.5 rounded-full bg-white" />
+                        Invited
+                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        {WIND_META[wind].badge} {WIND_META[wind].label}
+                      </span>
+                    </div>
+                    <h2 className="mt-2 truncate font-serif text-2xl leading-none">
+                      {invite.sessionTitle}
+                    </h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Invited by {invite.inviterName} · {boardLabel(invite.boardType)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void respondInvite(invite, "accept")}
+                      className="tap-press inline-flex h-10 items-center rounded-full bg-jade-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy ? "Joining…" : "Accept & Join"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void respondInvite(invite, "decline")}
+                      className="tap-press inline-flex h-10 items-center rounded-full border border-[#102A20]/15 bg-white px-3.5 text-xs font-medium disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       ) : null}
 
       {tables.length === 0 ? (

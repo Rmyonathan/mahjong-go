@@ -4,9 +4,13 @@ import "./globals.css"
 
 import { ThemeInitScript } from "@/components/theme-init-script"
 import { ThemeProvider } from "@/components/theme-provider"
+import { ProRenewalNotice } from "@/components/pro-renewal-notice"
 import { SiteChrome } from "@/components/site-chrome"
 import { SiteHeader } from "@/components/site-header"
+import { TableInviteBanner } from "@/components/table-invite-banner"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { NavTransitionBar } from "@/components/nav-transition-bar"
+import { PwaBootSplash } from "@/components/pwa-boot-splash"
 import { PwaRegister } from "@/components/pwa-register"
 
 const serif = Fraunces({
@@ -85,9 +89,13 @@ export default function RootLayout({
         />
         <ThemeInitScript />
         <ThemeProvider>
+          <NavTransitionBar />
+          <PwaBootSplash />
           <div className="relative z-10 flex min-h-full flex-1 flex-col">
             <SiteChrome>
               <SiteHeader />
+              <TableInviteBanner />
+              <ProRenewalNotice />
             </SiteChrome>
             <div className="flex flex-1 flex-col pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-12">
               {children}
