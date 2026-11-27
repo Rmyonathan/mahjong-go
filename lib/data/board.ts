@@ -96,26 +96,55 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
   const finished = await countFinishedSessions()
   if (finished === 0) return EMPTY_SEASON_KPI
 
-  const [sessionCount, handCount, biggest, topStanding] = await Promise.all([
-    prisma.gameSession.count({ where: { status: "FINISHED" } }),
-    prisma.handRecord.count({ where: { session: { status: "FINISHED" } } }),
-    prisma.handRecord.findFirst({
-      where: {
-        session: { status: "FINISHED" },
-        points: { gt: 0 },
-      },
-      orderBy: { points: "desc" },
-      include: {
-        winnerSeat: {
-          include: { user: { select: { playerId: true } } },
+  const [sessionCount, handCount, biggest, topStanding, handCombos] =
+    await Promise.all([
+      prisma.gameSession.count({ where: { status: "FINISHED" } }),
+      prisma.handRecord.count({ where: { session: { status: "FINISHED" } } }),
+      prisma.handRecord.findFirst({
+        where: {
+          session: { status: "FINISHED" },
+          points: { gt: 0 },
         },
-      },
-    }),
-    prisma.boardStanding.findFirst({
-      where: { seasonId: season.id },
-      orderBy: [{ streak: "desc" }, { points: "desc" }],
-    }),
-  ])
+        orderBy: { points: "desc" },
+        include: {
+          winnerSeat: {
+            include: { user: { select: { playerId: true } } },
+          },
+        },
+      }),
+      prisma.boardStanding.findFirst({
+        where: { seasonId: season.id },
+        orderBy: [{ streak: "desc" }, { points: "desc" }],
+      }),
+      prisma.handRecord.findMany({
+        where: {
+          session: { status: "FINISHED" },
+          winMethod: { not: "DRAW" },
+        },
+        select: { combosJson: true },
+      }),
+    ])
+
+  const comboFreq = new Map<string, number>()
+  for (const row of handCombos) {
+    if (!Array.isArray(row.combosJson)) continue
+    for (const item of row.combosJson) {
+      if (!item || typeof item !== "object") continue
+      const label = (item as { label?: unknown }).label
+      if (typeof label !== "string") continue
+      const trimmed = label.trim()
+      if (!trimmed || trimmed.toLowerCase() === "draw") continue
+      comboFreq.set(trimmed, (comboFreq.get(trimmed) ?? 0) + 1)
+    }
+  }
+  let topComboName = season.topComboName
+  let topComboCount = season.topComboCount
+  for (const [name, count] of comboFreq) {
+    if (count > topComboCount) {
+      topComboName = name
+      topComboCount = count
+    }
+  }
 
   const durationMs = await prisma.gameSession.findMany({
     where: { status: "FINISHED", endedAt: { not: null } },
@@ -143,8 +172,8 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
       combo: season.biggestHandCombo || "Winning hand",
     },
     topCombo: {
-      name: season.topComboName,
-      count: season.topComboCount,
+      name: topComboName,
+      count: topComboCount,
     },
     hotStreak: {
       playerId: topStanding?.playerId ?? season.hotStreakPlayerId,
@@ -157,9 +186,21 @@ export async function getWinMethodsSeason() {
   const finished = await countFinishedSessions()
   if (finished === 0) return { selfDraw: 0, discard: 0 }
 
-  const season = await prisma.season.findFirst({ where: { isActive: true } })
-  if (!season) return { selfDraw: 0, discard: 0 }
-  return { selfDraw: season.selfDrawWins, discard: season.discardWins }
+  const [selfDraw, discard] = await Promise.all([
+    prisma.handRecord.count({
+      where: {
+        session: { status: "FINISHED" },
+        winMethod: "SELF_DRAW",
+      },
+    }),
+    prisma.handRecord.count({
+      where: {
+        session: { status: "FINISHED" },
+        winMethod: "DISCARD",
+      },
+    }),
+  ])
+  return { selfDraw, discard }
 }
 
 export async function getDbBoardStandings(
