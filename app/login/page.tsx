@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
 
+import { whatsAppForgotPasswordUrl } from "@/lib/pro-payment"
 import { cn } from "@/lib/utils"
 
 type AuthTab = "login" | "register"
@@ -30,9 +31,7 @@ function AuthForm() {
     searchParams.get("tab") === "register" ? "register" : "login",
   )
   const [name, setName] = useState("")
-  const [email, setEmail] = useState(
-    tab === "login" ? "admin@jade.local" : "",
-  )
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -43,8 +42,6 @@ function AuthForm() {
     if (next === "register") {
       setEmail("")
       setPassword("")
-    } else {
-      setEmail("admin@jade.local")
     }
   }
 
@@ -215,6 +212,20 @@ function AuthForm() {
                 ? "Sign in"
                 : "Create account"}
           </button>
+          {tab === "login" ? (
+            <p className="pt-1 text-center text-xs text-muted-foreground">
+              Lupa password? Segera{" "}
+              <a
+                href={whatsAppForgotPasswordUrl(email)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-jade-accent underline underline-offset-2 hover:text-jade-ink"
+              >
+                hubungi admin via WhatsApp
+              </a>
+              .
+            </p>
+          ) : null}
         </form>
       </div>
 

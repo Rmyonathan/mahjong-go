@@ -74,3 +74,10 @@ export function whatsAppCoachingConfirmUrl(options: {
     `Halo Jade Mahjong — saya mau book Hand Audit 45 menit. Akun: ${name}. Session: ${session}.`,
   )
 }
+
+export function whatsAppForgotPasswordUrl(emailOrName?: string) {
+  const account = emailOrName?.trim() || "(isi email / nama akun)"
+  return waAppUrl(
+    `Halo Admin Jade Mahjong — saya lupa password akun saya. Mohon bantu reset password. Email/Akun: ${account}`,
+  )
+}
