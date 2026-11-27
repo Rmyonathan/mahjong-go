@@ -24,6 +24,8 @@ import { minFanForRuleset, rulesetFromDb } from "./rulesets";
 
 /** Ambang batas Fan untuk dianggap "Limit Hand" (Tangan Batas). */
 const LIMIT_FAN = 10;
+/** Batas maksimal total Faan untuk Jade HK. */
+const MAX_FAN = 13;
 
 /** Satu "faan"/pola yang berkontribusi pada skor. */
 export interface ScorePattern {
@@ -792,6 +794,11 @@ export function calculateHandScore(
     effectiveHand = effectiveHand.filter((p) => !p.key.startsWith("pung-dragon-"))
   }
 
+  // All Green (13F) sudah mencakup komposisi Jade Dragon (10F) → jangan hitung ganda.
+  if (effectiveHand.some((p) => p.key === "all-green")) {
+    effectiveHand = effectiveHand.filter((p) => p.key !== "jade-dragon")
+  }
+
   // Limit Hand: bila ada pola >= 10 Fan, tangan diperlakukan sebagai Tangan Batas —
   // seluruh komponen kecil diabaikan, hanya pola Limit yang dihitung.
   const isLimitHand = effectiveHand.some((p) => p.fan >= LIMIT_FAN)
@@ -818,10 +825,11 @@ export function calculateHandScore(
   }
 
   // -------------------------------------------------------------------------
-  // Gabungan pola & total (tanpa batas maksimal Faan)
+  // Gabungan pola & total (maksimal 13 Faan)
   // -------------------------------------------------------------------------
   const patterns = [...flowerPatterns, ...effectiveHand]
-  const totalFan = patterns.reduce((sum, p) => sum + p.fan, 0)
+  const rawFan = patterns.reduce((sum, p) => sum + p.fan, 0)
+  const totalFan = Math.min(MAX_FAN, rawFan)
 
   const minFan = minFanForRuleset(variant)
   let valid = hasValidStructure
@@ -838,6 +846,11 @@ export function calculateHandScore(
     messages.unshift("Tangan masih kosong. Seret ubin ke area tangan pemain.")
   } else if (patterns.length === 0) {
     messages.push("Belum ada pola bernilai Faan yang terdeteksi.")
+  }
+  if (rawFan > MAX_FAN) {
+    messages.push(
+      `Total ${rawFan} Faan dibatasi maksimal ${MAX_FAN} Faan untuk bayaran.`,
+    )
   }
 
   return {
