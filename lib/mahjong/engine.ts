@@ -82,6 +82,16 @@ const SUIT_LABEL_ID: Record<SuitType, string> = {
   characters: "Karakter",
 };
 
+/** Ubin hijau yang sah untuk All Green (綠一色). */
+const ALL_GREEN_IDS = new Set([
+  "bamboo-2",
+  "bamboo-3",
+  "bamboo-4",
+  "bamboo-6",
+  "bamboo-8",
+  "dragon-green",
+]);
+
 /** Ke-13 jenis ubin "orphan" (terminal 1/9 tiap suit + seluruh honor). */
 const THIRTEEN_ORPHAN_IDS = [
   "dots-1",
@@ -678,6 +688,17 @@ export function calculateHandScore(
       })
     }
 
+    // --- All Green (綠一色) — 13 Faan ---
+    if (standardTiles.every((t) => ALL_GREEN_IDS.has(t.id))) {
+      handPatterns.push({
+        key: "all-green",
+        name: "All Green (綠一色)",
+        fan: 13,
+        description:
+          "Seluruh ubin hanya 2, 3, 4, 6, 8 Bambu dan/atau Naga Hijau (發). (Limit Hand)",
+      })
+    }
+
     // --- All Honors ---
     const allHonors = standardTiles.every((t) => t.category === "honor")
     if (allHonors) {
@@ -797,12 +818,10 @@ export function calculateHandScore(
   }
 
   // -------------------------------------------------------------------------
-  // Gabungan pola & total
+  // Gabungan pola & total (tanpa batas maksimal Faan)
   // -------------------------------------------------------------------------
   const patterns = [...flowerPatterns, ...effectiveHand]
-  const rawFan = patterns.reduce((sum, p) => sum + p.fan, 0)
-  // EDIT HERE — payout/display cap at Limit 10 Faan
-  const totalFan = Math.min(LIMIT_FAN, rawFan)
+  const totalFan = patterns.reduce((sum, p) => sum + p.fan, 0)
 
   const minFan = minFanForRuleset(variant)
   let valid = hasValidStructure
@@ -819,11 +838,6 @@ export function calculateHandScore(
     messages.unshift("Tangan masih kosong. Seret ubin ke area tangan pemain.")
   } else if (patterns.length === 0) {
     messages.push("Belum ada pola bernilai Faan yang terdeteksi.")
-  }
-  if (rawFan > LIMIT_FAN) {
-    messages.push(
-      `Total ${rawFan} Faan dibatasi Limit ${LIMIT_FAN} Faan untuk bayaran.`,
-    )
   }
 
   return {

@@ -18,7 +18,7 @@ export const COMBO_POINT_FILTERS: { id: ComboPointBucket | "all"; label: string 
     { id: "3", label: "3 Faan" },
     { id: "4", label: "4 Faan" },
     { id: "6", label: "6 Faan" },
-    { id: "10", label: "10 Faan" },
+    { id: "10", label: "10+ Faan" },
   ]
 
 function bucketFor(points: number): ComboPointBucket {
@@ -370,6 +370,24 @@ export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
       "dragon-green",
       "dragon-white",
       "dragon-white",
+    ],
+  }),
+  pattern({
+    id: "all-green",
+    name: "All Green (綠一色)",
+    points: 13,
+    description:
+      "Seluruh ubin serba hijau: hanya 2, 3, 4, 6, 8 Bambu dan/atau Naga Hijau (發) — 14 tile.",
+    exampleTileIds: [
+      "bamboo-2",
+      "bamboo-2",
+      "bamboo-3",
+      "bamboo-3",
+      "bamboo-4",
+      "bamboo-4",
+      ...pung("bamboo-8"),
+      ...pung("dragon-green"),
+      ...pair("bamboo-6"),
     ],
   }),
 ]

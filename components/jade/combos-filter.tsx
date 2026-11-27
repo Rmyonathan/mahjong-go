@@ -17,7 +17,7 @@ const BUCKET_LABELS: Record<ComboPointBucket, string> = {
   "3": "3 Faan",
   "4": "4 Faan",
   "6": "6 Faan",
-  "10": "10 Faan (Limit)",
+  "10": "10+ Faan (Limit)",
 }
 
 export function CombosFilter() {

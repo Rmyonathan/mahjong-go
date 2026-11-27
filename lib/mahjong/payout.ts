@@ -18,7 +18,7 @@ export const FAAN_TO_BASE_POINTS: Record<number, number> = {
   10: 64000, // Limit / max
 }
 
-/** Cap total Faan for payout (Limit 10). */
+/** Threshold Faan considered a Limit Hand (no max cap applied to payout). */
 export const FAAN_LIMIT = 10
 
 // EDIT HERE — set true for full-shooter / bao (discarder pays entire 4×B alone)
@@ -50,14 +50,23 @@ export interface JadePayout {
 }
 
 export function basePointsForFan(totalFan: number): number {
-  const capped = Math.min(FAAN_LIMIT, Math.max(0, Math.floor(totalFan)))
-  return FAAN_TO_BASE_POINTS[capped] ?? FAAN_TO_BASE_POINTS[FAAN_LIMIT]!
+  const fan = Math.max(0, Math.floor(totalFan))
+  if (FAAN_TO_BASE_POINTS[fan] !== undefined) {
+    return FAAN_TO_BASE_POINTS[fan]!
+  }
+  // No max Faan cap: every +2 Faan doubles base points (9→48k, 10→64k, 11→96k, 12→128k, 13→192k…)
+  let cur = fan
+  let mult = 1
+  while (cur > 10) {
+    cur -= 2
+    mult *= 2
+  }
+  return (FAAN_TO_BASE_POINTS[cur] ?? 64000) * mult
 }
 
 export function getJadePayout(totalFan: number): JadePayout {
   const fan = Math.max(0, Math.floor(totalFan))
-  const cappedFan = Math.min(FAAN_LIMIT, fan)
-  const B = basePointsForFan(cappedFan)
+  const B = basePointsForFan(fan)
   const isLimit = fan >= FAAN_LIMIT
 
   const discarderPays = FULL_SHOOTER_DISCARD ? 4 * B : 2 * B
@@ -68,7 +77,7 @@ export function getJadePayout(totalFan: number): JadePayout {
 
   return {
     totalFan: fan,
-    cappedFan,
+    cappedFan: fan,
     basePoints: B,
     isLimit,
     winnerDiscard,
