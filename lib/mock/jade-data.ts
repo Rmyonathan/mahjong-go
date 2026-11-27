@@ -98,6 +98,8 @@ export interface JadePlayer {
   house: string
   experienceLevelId: ExperienceLevelId
   memberSince: string
+  avatarUrl?: string | null
+  frameId?: string
 }
 
 export interface LeaderboardStanding {

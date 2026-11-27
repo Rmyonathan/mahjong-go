@@ -130,6 +130,10 @@ model Player {
   house             String
   experienceLevelId String
   memberSince       DateTime
+  /// Optional preset ("preset:dragon-red") or compressed data URL ("data:image/...")
+  avatarUrl         String?
+  /// Avatar frame ("classic", "mahir", "pro-gold", etc.)
+  frameId           String   @default("classic")
   /// Club experience points — updated when a LIVE session is finished
   experienceXp      Int      @default(0)
   /// Skill rating (ELO) — updated when a LIVE session is finished

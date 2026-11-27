@@ -7,6 +7,7 @@ import { BoardFilters } from "@/components/jade/board-filters"
 import { FormSquares } from "@/components/jade/form-squares"
 import { ArchiveUpgradeTeaser } from "@/components/leaderboard/archive-upgrade-teaser"
 import { LeaderboardTvCast } from "@/components/leaderboard/tv-cast"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { getSessionUser } from "@/lib/auth"
 import {
   getActiveSeason,
@@ -266,7 +267,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   </p>
                   <p className="font-mono text-3xl text-jade-gold sm:text-4xl">1</p>
                 </div>
-                <LevelBadge label={leader.experienceLevel.name} />
+                <PlayerAvatar
+                  initials={leader.player.initials}
+                  name={leader.player.name}
+                  avatarUrl={leader.player.avatarUrl}
+                  frameId={leader.player.frameId}
+                  size="md"
+                />
                 <div className="min-w-0 flex-1 pr-14 sm:pr-16">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-serif text-2xl leading-none sm:text-4xl">
@@ -376,6 +383,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                               "border-[2px] border-jade-gold shadow-[3px_3px_0_0_var(--jade-accent)] px-2 py-1",
                           )}
                         >
+                          <PlayerAvatar
+                            initials={row.player.initials}
+                            name={row.player.name}
+                            avatarUrl={row.player.avatarUrl}
+                            frameId={row.player.frameId}
+                            size="xs"
+                          />
                           <PlayerName
                             playerId={row.playerId}
                             name={row.player.name}
@@ -429,6 +443,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
+                          <PlayerAvatar
+                            initials={row.player.initials}
+                            name={row.player.name}
+                            avatarUrl={row.player.avatarUrl}
+                            frameId={row.player.frameId}
+                            size="xs"
+                          />
                           <PlayerName
                             playerId={row.playerId}
                             name={row.player.name}
@@ -608,17 +629,6 @@ function ProBadge() {
   )
 }
 
-function LevelBadge({ label }: { label: string }) {
-  return (
-    <div
-      className="grid size-12 shrink-0 place-items-center border-[2px] border-jade-ink bg-parchment font-mono text-[10px] uppercase tracking-[0.08em] shadow-[3px_3px_0_0_var(--jade-ink)]"
-      title={label}
-    >
-      {label.slice(0, 3)}
-    </div>
-  )
-}
-
 function PlayerName({
   playerId,
   name,
@@ -659,7 +669,13 @@ function PodiumSide({
       <p className="w-5 shrink-0 font-mono text-2xl text-muted-foreground sm:text-3xl">
         {place}
       </p>
-      <LevelBadge label={row.experienceLevel.name} />
+      <PlayerAvatar
+        initials={row.player.initials}
+        name={row.player.name}
+        avatarUrl={row.player.avatarUrl}
+        frameId={row.player.frameId}
+        size="md"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
           <p className="truncate font-serif text-lg leading-none sm:text-xl">

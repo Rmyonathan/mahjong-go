@@ -20,6 +20,13 @@ export async function GET() {
       membershipTier: true,
       proExpiresAt: true,
       playerId: true,
+      player: {
+        select: {
+          initials: true,
+          avatarUrl: true,
+          frameId: true,
+        },
+      },
     },
   })
   if (!full) return NextResponse.json({ user: null })

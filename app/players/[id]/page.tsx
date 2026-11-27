@@ -3,6 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import { MentorApplicationCard } from "@/components/players/mentor-application-card"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { PlayerEloChart } from "@/components/players/player-elo-chart"
 import { PlayerMembershipCard } from "@/components/players/player-membership-card"
 import { PlayerProfileEditor } from "@/components/players/player-profile-editor"
@@ -105,9 +106,13 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
 
       <article className="jade-card relative mt-6 overflow-hidden p-5 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-          <div className="grid size-20 shrink-0 place-items-center border-[2px] border-jade-ink bg-jade-gold font-mono text-xl shadow-[4px_4px_0_0_var(--jade-ink)]">
-            {player.initials}
-          </div>
+          <PlayerAvatar
+            initials={player.initials}
+            name={player.name}
+            avatarUrl={player.avatarUrl}
+            frameId={player.frameId}
+            size="xl"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {isOwnProfile ? (
@@ -145,6 +150,11 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
                 playerId={player.id}
                 initialName={player.name}
                 initialNickname={player.nickname}
+                initials={player.initials}
+                initialAvatarUrl={player.avatarUrl}
+                initialFrameId={player.frameId}
+                level={profile.experienceLevelNumber}
+                isPro={ownerIsPro}
               />
             ) : null}
           </div>

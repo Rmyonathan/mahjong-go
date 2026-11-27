@@ -84,6 +84,8 @@ function toJadePlayer(player: {
   house: string
   experienceLevelId: string
   memberSince: Date
+  avatarUrl?: string | null
+  frameId?: string
 }): JadePlayer {
   return {
     id: player.id,
@@ -96,6 +98,8 @@ function toJadePlayer(player: {
     experienceLevelId:
       player.experienceLevelId as JadePlayer["experienceLevelId"],
     memberSince: player.memberSince.toISOString().slice(0, 10),
+    avatarUrl: player.avatarUrl ?? null,
+    frameId: player.frameId ?? "classic",
   }
 }
 

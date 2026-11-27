@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 
 import { NotificationBell } from "@/components/notification-bell"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { ProPerkModal } from "@/components/schedule/pro-perk-modal"
 import { SearchPlayerModal } from "@/components/search-player-modal"
 import {
@@ -33,6 +34,11 @@ type AuthUser = {
   isPro?: boolean
   membershipTier?: "FREE" | "PRO"
   proExpiresAt?: string | null
+  player?: {
+    initials: string
+    avatarUrl?: string | null
+    frameId?: string | null
+  } | null
 }
 
 function NavLinkPendingBar() {
@@ -510,10 +516,18 @@ export function SiteHeader() {
                   <button
                     type="button"
                     onClick={() => setUserOpen((v) => !v)}
-                    className="tap-press grid size-10 place-items-center rounded-full bg-jade-ink font-mono text-[11px] font-semibold tracking-wide text-white"
+                    className="tap-press rounded-full"
                     aria-label="Account menu"
                   >
-                    {initials}
+                    <PlayerAvatar
+                      initials={user?.player?.initials ?? initials}
+                      name={user?.name}
+                      avatarUrl={user?.player?.avatarUrl}
+                      frameId={user?.player?.frameId}
+                      size="sm"
+                      rounded="full"
+                      showBadge={false}
+                    />
                   </button>
                   {userOpen ? (
                     <div className="absolute right-0 top-[calc(100%+0.55rem)] z-50 w-52 rounded-2xl border border-[#102A20]/10 bg-white p-1.5 shadow-[0_16px_40px_-12px_rgba(16,42,32,0.25)]">
