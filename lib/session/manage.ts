@@ -15,6 +15,7 @@ export type SessionManageState = {
   scannerUserIds: string[]
   seatJoinHand: Record<string, number>
   retiredPlayers: RetiredSeatRecord[]
+  started: boolean
 }
 
 let ensurePromise: Promise<void> | null = null
@@ -43,6 +44,10 @@ export function ensureSessionManageTable(): Promise<void> {
         ALTER TABLE "SessionManageState"
         ADD COLUMN IF NOT EXISTS "retiredPlayers" JSONB NOT NULL DEFAULT '[]'::jsonb;
       `)
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "SessionManageState"
+        ADD COLUMN IF NOT EXISTS "started" BOOLEAN NOT NULL DEFAULT false;
+      `)
     })().catch((err) => {
       ensurePromise = null
       throw err
@@ -62,9 +67,10 @@ export async function getSessionManageState(
       scannerUserIds: unknown
       seatJoinHand: unknown
       retiredPlayers: unknown
+      started: boolean
     }>
   >`
-    SELECT "dealerOffset", "roundOffset", "scannerUserIds", "seatJoinHand", "retiredPlayers"
+    SELECT "dealerOffset", "roundOffset", "scannerUserIds", "seatJoinHand", "retiredPlayers", "started"
     FROM "SessionManageState"
     WHERE "sessionId" = ${sessionId}
     LIMIT 1
@@ -77,6 +83,7 @@ export async function getSessionManageState(
       scannerUserIds: [],
       seatJoinHand: {},
       retiredPlayers: [],
+      started: false,
     }
   }
   const rawJoin =
@@ -99,6 +106,7 @@ export async function getSessionManageState(
       : [],
     seatJoinHand,
     retiredPlayers,
+    started: Boolean(row.started),
   }
 }
 
@@ -110,6 +118,7 @@ export async function saveSessionManageState(
   const scannersJson = JSON.stringify(Array.from(new Set(state.scannerUserIds)))
   const joinHandJson = JSON.stringify(state.seatJoinHand ?? {})
   const retiredJson = JSON.stringify(state.retiredPlayers ?? [])
+  const started = Boolean(state.started)
   await prisma.$executeRaw`
     INSERT INTO "SessionManageState" (
       "sessionId",
@@ -118,6 +127,7 @@ export async function saveSessionManageState(
       "scannerUserIds",
       "seatJoinHand",
       "retiredPlayers",
+      "started",
       "updatedAt"
     )
     VALUES (
@@ -127,6 +137,7 @@ export async function saveSessionManageState(
       ${scannersJson}::jsonb,
       ${joinHandJson}::jsonb,
       ${retiredJson}::jsonb,
+      ${started},
       NOW()
     )
     ON CONFLICT ("sessionId") DO UPDATE
@@ -136,6 +147,7 @@ export async function saveSessionManageState(
       "scannerUserIds" = EXCLUDED."scannerUserIds",
       "seatJoinHand" = EXCLUDED."seatJoinHand",
       "retiredPlayers" = EXCLUDED."retiredPlayers",
+      "started" = EXCLUDED."started",
       "updatedAt" = NOW()
   `
 }

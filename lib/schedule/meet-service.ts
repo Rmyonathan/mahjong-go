@@ -420,6 +420,7 @@ export async function listUpcomingMeets(
       where: {
         status: { in: ["OPEN", "FULL"] },
         startsAt: { gte: today },
+        sessions: { none: { status: "FINISHED" } },
         ...visibilityWhere,
       },
       include: meetInclude,
@@ -433,7 +434,11 @@ export async function listUpcomingMeets(
         startsAt: {
           gte: new Date(today.getTime() - 21 * 24 * 60 * 60 * 1000),
         },
-        OR: [{ startsAt: { lt: today } }, { status: "COMPLETED" }],
+        OR: [
+          { startsAt: { lt: today } },
+          { status: "COMPLETED" },
+          { sessions: { some: { status: "FINISHED" } } },
+        ],
         ...visibilityWhere,
       },
       include: meetInclude,

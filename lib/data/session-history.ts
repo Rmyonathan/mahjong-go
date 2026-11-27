@@ -117,12 +117,16 @@ export async function getPersonalSessionHistory(
   }
 }
 
+function normalizeSearchText(text: string) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
+
 /**
- * Pro archive search — finished sessions this user sat, matching title or
- * table-mate name/nickname. Free callers should not hit this (API gates Pro).
+ * Pro archive search — finished club sessions matching title or player
+ * name/nickname with flexible token + compact matching.
  */
 export async function searchPersonalSessions(
-  userId: string,
+  _userId: string,
   query: string,
   options?: { limit?: number },
 ) {
@@ -130,61 +134,51 @@ export async function searchPersonalSessions(
   if (!q) return []
 
   const limit = Math.min(Math.max(options?.limit ?? 12, 1), 24)
-  const seats = await prisma.sessionSeat.findMany({
-    where: {
-      userId,
-      session: {
-        status: "FINISHED",
-        OR: [
-          { title: { contains: q, mode: "insensitive" } },
-          {
-            seats: {
-              some: {
-                OR: [
-                  { guestName: { contains: q, mode: "insensitive" } },
-                  {
-                    user: {
-                      name: { contains: q, mode: "insensitive" },
-                    },
-                  },
-                  {
-                    user: {
-                      player: {
-                        nickname: { contains: q, mode: "insensitive" },
-                      },
-                    },
-                  },
-                ],
-              },
+  const tokens = normalizeSearchText(q).split(/\s+/).filter(Boolean)
+  const compactQuery = q.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+  const recentFinished = await prisma.gameSession.findMany({
+    where: { status: "FINISHED" },
+    include: {
+      seats: {
+        select: {
+          guestName: true,
+          user: {
+            select: {
+              name: true,
+              player: { select: { nickname: true, name: true } },
             },
           },
-        ],
-      },
-    },
-    include: {
-      session: {
-        select: {
-          id: true,
-          title: true,
-          boardType: true,
-          startedAt: true,
-          endedAt: true,
         },
       },
     },
-    orderBy: { session: { startedAt: "desc" } },
-    take: limit,
+    orderBy: { startedAt: "desc" },
+    take: 150,
   })
 
-  return seats.map((seat) => ({
-    id: seat.session.id,
-    title: seat.session.title,
-    boardType: seat.session.boardType,
-    startedAt: seat.session.startedAt.toISOString(),
-    endedAt: seat.session.endedAt?.toISOString() ?? null,
-    wind: WIND_FROM_DB[seat.wind],
-    netPoints: seat.netPoints,
-    netLabel: formatSignedPoints(seat.netPoints),
+  const matched = recentFinished.filter((session) => {
+    const parts = [
+      session.title,
+      ...session.seats.flatMap((seat) => [
+        seat.guestName ?? "",
+        seat.user?.name ?? "",
+        seat.user?.player?.name ?? "",
+        seat.user?.player?.nickname ?? "",
+      ]),
+    ]
+    const haystack = normalizeSearchText(parts.join(" "))
+    const compactHaystack = haystack.replace(/\s+/g, "")
+    if (compactQuery && compactHaystack.includes(compactQuery)) return true
+    return tokens.length > 0 && tokens.every((token) => haystack.includes(token))
+  })
+
+  return matched.slice(0, limit).map((session) => ({
+    id: session.id,
+    title: session.title,
+    boardType: session.boardType,
+    startedAt: session.startedAt.toISOString(),
+    netLabel: "",
+    wind: "",
   }))
 }
 

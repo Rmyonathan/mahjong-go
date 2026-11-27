@@ -2,6 +2,8 @@ import { compressScanImage } from "@/lib/scan/compress-image"
 import type { ScanHandResult } from "@/lib/scan/parse-hand-response"
 
 export async function scanHandFromFile(file: Blob): Promise<ScanHandResult> {
+  const totalStart = performance.now()
+  const compressStart = performance.now()
   let compressed
   try {
     compressed = await compressScanImage(file)
@@ -12,7 +14,9 @@ export async function scanHandFromFile(file: Blob): Promise<ScanHandResult> {
         : "Could not read photo — try Upload / JPEG",
     )
   }
+  const phoneMs = Math.round(performance.now() - compressStart)
 
+  const netStart = performance.now()
   let response: Response
   try {
     response = await fetch("/api/scan/hand", {
@@ -47,9 +51,25 @@ export async function scanHandFromFile(file: Blob): Promise<ScanHandResult> {
     throw new Error(data.error ?? `Scan failed (${response.status})`)
   }
 
+  const netMs = Math.round(performance.now() - netStart)
+  const totalMs = Math.round(performance.now() - totalStart)
+  const serverMs = data.timing?.serverMs ?? netMs
+  const aiMs = data.timing?.aiMs ?? serverMs
+  const hostNetworkMs = Math.max(0, netMs - serverMs)
+  const timing = {
+    phoneMs,
+    hostNetworkMs,
+    aiMs,
+    serverMs,
+    totalMs,
+    payloadKb: data.timing?.payloadKb,
+  }
+  console.log("[SCAN TIMING]", timing)
+
   return {
     tiles: data.tiles ?? [],
     detected: data.detected ?? [],
     uncertainIndices: data.uncertainIndices ?? [],
+    timing,
   }
 }

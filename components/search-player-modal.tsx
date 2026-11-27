@@ -258,7 +258,7 @@ export function SearchPlayerModal({
             {trimmed.length >= 2 ? (
               <div className="border-t border-[#102A20]/10 pt-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  Your sessions {isPro ? "· Pro archive" : "· Pro"}
+                  Sessions {isPro ? "· Pro archive" : "· Pro"}
                 </p>
 
                 {sessionLocked ? (

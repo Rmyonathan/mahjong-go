@@ -111,8 +111,9 @@ export function ShareWinCardButton({
             </p>
 
             <div className="mt-14 flex flex-wrap gap-3">
-              {hand.combos
+              {[...hand.combos]
                 .filter((c) => c.label !== "Draw")
+                .sort((a, b) => b.fan - a.fan)
                 .map((combo) => (
                   <span
                     key={`${combo.label}-${combo.fan}`}

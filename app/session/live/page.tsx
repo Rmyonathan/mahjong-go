@@ -70,6 +70,8 @@ function LiveSessionInner() {
   const [handLogOpen, setHandLogOpen] = useState(false)
   const [cameraScanOpen, setCameraScanOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
+  const [startModalOpen, setStartModalOpen] = useState(false)
+  const [roundPickerOpen, setRoundPickerOpen] = useState(false)
   const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const [isPro, setIsPro] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -388,6 +390,7 @@ function LiveSessionInner() {
     null
   const canControlTable = isCaptain || canLogHands
   const waitingForInvites = pendingInvitesCount > 0
+  const needsSessionStart = !session.sessionStarted && session.hands.length === 0
   const waitlistQueue =
     (session as ManageableSession).waitlistQueue ?? []
 
@@ -438,9 +441,21 @@ function LiveSessionInner() {
               {session.maxHours ? ` / ${session.maxHours}h` : ""}
             </span>
           ) : null}
-          <span className="border border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-            {roundBadge(session)}
-          </span>
+          {isCaptain ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRoundPickerOpen(true)}
+              className="tap-press border-[2px] border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-jade-soft disabled:opacity-40"
+              title="Change round wind"
+            >
+              {roundBadge(session)} ▾
+            </button>
+          ) : (
+            <span className="border border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+              {roundBadge(session)}
+            </span>
+          )}
           <span className="border border-jade-ink bg-parchment px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em]">
             Hand #{session.handNumber}
           </span>
@@ -479,6 +494,33 @@ function LiveSessionInner() {
         </p>
       ) : null}
 
+      {needsSessionStart ? (
+        <div className="jade-card-accent mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-jade-accent">
+              Before Hand #1
+            </p>
+            <p className="mt-1 font-serif text-xl leading-snug">
+              Set who starts as Tong (Dealer), Nan, Xi{session.seats.length >= 4 ? ", and Pei" : ""}
+            </p>
+          </div>
+          {isCaptain ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setStartModalOpen(true)}
+              className="scan-cta inline-flex h-12 shrink-0 items-center justify-center px-5 font-mono text-xs font-semibold uppercase tracking-[0.16em] disabled:opacity-40"
+            >
+              Start Session →
+            </button>
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Waiting for captain to start session…
+            </span>
+          )}
+        </div>
+      ) : null}
+
       <section
         className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
         aria-label="Live seats"
@@ -505,11 +547,29 @@ function LiveSessionInner() {
                     size="sm"
                   />
                 </div>
-                {dealer ? (
-                  <span className="border border-jade-gold bg-jade-gold px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-jade-ink">
-                    Dealer
-                  </span>
-                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-1">
+                  {(() => {
+                    const metaUserId = (
+                      session as LiveSession & {
+                        captainUserId?: string
+                        seatsMeta?: Array<{ userId?: string | null }>
+                      }
+                    ).seatsMeta?.[index]?.userId
+                    const captainId = (
+                      session as LiveSession & { captainUserId?: string }
+                    ).captainUserId
+                    return metaUserId && captainId && metaUserId === captainId ? (
+                      <span className="border border-jade-ink bg-jade-ink px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-white">
+                        Host
+                      </span>
+                    ) : null
+                  })()}
+                  {dealer ? (
+                    <span className="border border-jade-gold bg-jade-gold px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-jade-ink">
+                      Dealer
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <h2 className="mt-3 truncate font-serif text-2xl leading-none">
                 {(() => {
@@ -605,7 +665,7 @@ function LiveSessionInner() {
         <div className="relative inline-flex min-w-[16rem] flex-1 sm:flex-none">
           <button
             type="button"
-            disabled={busy || !canControlTable || waitingForInvites}
+            disabled={busy || !canControlTable || waitingForInvites || needsSessionStart}
             onClick={() => setHandLogOpen(true)}
             className="scan-cta-accent inline-flex h-12 w-full items-center justify-center rounded-none px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
           >
@@ -614,7 +674,7 @@ function LiveSessionInner() {
         </div>
         <button
           type="button"
-          disabled={busy || !canControlTable || waitingForInvites}
+          disabled={busy || !canControlTable || waitingForInvites || needsSessionStart}
           onClick={() => setCameraScanOpen(true)}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
@@ -622,7 +682,7 @@ function LiveSessionInner() {
         </button>
         <button
           type="button"
-          disabled={busy || !canControlTable || waitingForInvites}
+          disabled={busy || !canControlTable || waitingForInvites || needsSessionStart}
           onClick={onDraw}
           className="inline-flex h-12 items-center justify-center border-[2px] border-jade-ink bg-parchment px-4 font-mono text-[11px] uppercase tracking-[0.16em] disabled:opacity-40"
         >
@@ -672,6 +732,7 @@ function LiveSessionInner() {
         open={handLogOpen}
         seats={session.seats}
         ruleset={session.scoringRuleset ?? "jade-hk"}
+        roundWind={session.roundWind ?? "east"}
         onClose={() => setHandLogOpen(false)}
         onConfirm={logConfirmed}
       />
@@ -679,12 +740,85 @@ function LiveSessionInner() {
         open={cameraScanOpen}
         seats={session.seats}
         ruleset={session.scoringRuleset ?? "jade-hk"}
+        roundWind={session.roundWind ?? "east"}
         onClose={() => setCameraScanOpen(false)}
         onConfirm={(hand) => {
           setCameraScanOpen(false)
           logConfirmed(hand)
         }}
       />
+      <StartSessionModal
+        open={startModalOpen}
+        session={session as ManageableSession}
+        onClose={() => setStartModalOpen(false)}
+        onStarted={() => {
+          setStartModalOpen(false)
+          if (sessionId) void refresh(sessionId).catch(() => undefined)
+        }}
+      />
+      {roundPickerOpen ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close round picker"
+            className="absolute inset-0 bg-jade-ink/55"
+            onClick={() => setRoundPickerOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-xs border-[2px] border-jade-ink bg-parchment p-4 shadow-[6px_6px_0_0_var(--jade-ink)]">
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              Change Round Wind
+            </p>
+            <h2 className="mt-1 font-serif text-2xl">Angin Meja / Ronde</h2>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {(["east", "south", "west", "north"] as const).map((windKey) => {
+                const meta = WIND_META[windKey]
+                const active = (session.roundWind ?? "east") === windKey
+                return (
+                  <button
+                    key={windKey}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (!sessionId) return
+                      setBusy(true)
+                      void fetch(`/api/sessions/${sessionId}/manage`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "set_round_wind",
+                          roundWind: windKey,
+                        }),
+                      })
+                        .then(() => refresh(sessionId))
+                        .then(() => setRoundPickerOpen(false))
+                        .catch(() => undefined)
+                        .finally(() => setBusy(false))
+                    }}
+                    className={cn(
+                      "flex flex-col items-center gap-1 border-[2px] py-3 font-mono text-xs uppercase tracking-[0.14em] transition",
+                      active
+                        ? "border-jade-accent bg-jade-accent text-white"
+                        : "border-jade-ink bg-card text-jade-ink hover:bg-jade-soft",
+                    )}
+                  >
+                    <span className="font-serif text-2xl leading-none">
+                      {meta.badge}
+                    </span>
+                    <span>{meta.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setRoundPickerOpen(false)}
+              className="mt-3 h-10 w-full border-[2px] border-jade-ink bg-card font-mono text-[10px] uppercase tracking-[0.14em]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       <ScoutPlayerModal
         playerId={scoutPlayerId}
         onClose={() => setScoutPlayerId(null)}
@@ -1087,5 +1221,151 @@ function FinalStandings({
         <LiveGameLog session={session} isPro={isPro} />
       </div>
     </main>
+  )
+}
+
+function StartSessionModal({
+  open,
+  session,
+  onClose,
+  onStarted,
+}: {
+  open: boolean
+  session: ManageableSession
+  onClose: () => void
+  onStarted: () => void
+}) {
+  const seatRows = useMemo(
+    () =>
+      (session.seatsMeta ?? []).map((meta, idx) => ({
+        seatId: meta.id,
+        label: session.seats[idx]?.name ?? meta.guestName ?? `Seat #${idx + 1}`,
+      })),
+    [session],
+  )
+  const [order, setOrder] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setOrder(seatRows.map((s) => s.seatId))
+    setError(null)
+  }, [open, seatRows])
+
+  if (!open) return null
+
+  const WIND_SLOTS = [
+    { label: "Tong (Dealer / 東)", badge: "東" },
+    { label: "Nan (南)", badge: "南" },
+    { label: "Xi (西)", badge: "西" },
+    { label: "Pei (北)", badge: "北" },
+  ]
+
+  function updateSlot(slotIdx: number, nextSeatId: string) {
+    setOrder((prev) => {
+      const copy = [...prev]
+      const existingIdx = copy.indexOf(nextSeatId)
+      if (existingIdx >= 0 && existingIdx !== slotIdx) {
+        copy[existingIdx] = copy[slotIdx]!
+      }
+      copy[slotIdx] = nextSeatId
+      return copy
+    })
+  }
+
+  async function submit() {
+    setSaving(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/sessions/${session.id}/manage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start_session",
+          seatIdsInWindOrder: order,
+        }),
+      })
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) {
+        setError(data.error ?? "Could not start session")
+        return
+      }
+      onStarted()
+    } catch {
+      setError("Network error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[85] flex items-end justify-center sm:items-center sm:p-4">
+      <button
+        type="button"
+        aria-label="Close start session"
+        className="absolute inset-0 bg-jade-ink/55"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-md border-[2px] border-jade-ink bg-parchment p-5 shadow-[8px_8px_0_0_var(--jade-ink)]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-jade-accent">
+          Start Session
+        </p>
+        <h2 className="mt-1 font-serif text-2xl">
+          Set Tong, Nan, Xi{seatRows.length >= 4 ? ", Pei" : ""}
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Choose who starts as Dealer (Tong), then the next seats in order.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          {seatRows.map((_, idx) => {
+            const slot = WIND_SLOTS[idx] ?? { label: `Seat #${idx + 1}`, badge: `${idx + 1}` }
+            return (
+              <label key={slot.label} className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                  {slot.badge} · {slot.label}
+                </span>
+                <select
+                  value={order[idx] ?? ""}
+                  onChange={(e) => updateSlot(idx, e.target.value)}
+                  className="mt-1 h-11 w-full border-[2px] border-jade-ink bg-card px-3 text-sm"
+                >
+                  {seatRows.map((seat) => (
+                    <option key={seat.seatId} value={seat.seatId}>
+                      {seat.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )
+          })}
+        </div>
+
+        {error ? (
+          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-red">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 w-full border-[2px] border-jade-ink bg-card font-mono text-[11px] uppercase tracking-[0.14em] sm:flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void submit()}
+            className="scan-cta h-12 w-full font-mono text-xs font-semibold uppercase tracking-[0.16em] disabled:opacity-50 sm:flex-[1.5]"
+          >
+            {saving ? "Starting…" : "Start Session"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

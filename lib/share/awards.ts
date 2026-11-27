@@ -41,7 +41,9 @@ export function computeSessionAwards(session: LiveSession): SessionAward[] {
 
   if (biggestSeat && biggestHand) {
     const combo =
-      biggestHand.combos.find((c) => c.label !== "Draw")?.label ?? "Winning hand"
+      [...biggestHand.combos]
+        .filter((c) => c.label !== "Draw")
+        .sort((a, b) => b.fan - a.fan)[0]?.label ?? "Winning hand"
     awards.push({
       id: "biggest",
       title: "Biggest Hand",

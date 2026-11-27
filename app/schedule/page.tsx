@@ -280,7 +280,12 @@ function SchedulePageInner() {
     const past: ApiMeet[] = []
     for (const meet of filtered) {
       const starts = new Date(meet.startsAt).getTime()
-      if (meet.status === "COMPLETED" || starts < startOfToday.getTime()) {
+      const hasFinishedSession = meet.latestSessionStatus === "FINISHED"
+      if (
+        meet.status === "COMPLETED" ||
+        hasFinishedSession ||
+        starts < startOfToday.getTime()
+      ) {
         past.push(meet)
       } else {
         upcoming.push(meet)

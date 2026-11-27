@@ -394,6 +394,40 @@ export async function getGameSession(id: string) {
   return ensureLiveSessionNotExpired(session)
 }
 
+const WINDS_ORDER: LiveWind[] = ["east", "south", "west", "north"]
+
+/**
+ * Compute current dealer seat index and round wind from hand history:
+ * - If the current dealer (Tong) wins, dealer stays (no rotation).
+ * - If another player wins (or draw), dealer rotates to the next seat.
+ * - After 1 full putaran (everyone has been Tong once and it returns to seat 0),
+ *   the table round wind advances (Tong -> Nan -> Xi -> Pei).
+ */
+export function computeDealerAndRound(
+  handsAsc: Array<{ winMethod: HandWinMethod; winnerSeatId: string | null }>,
+  seatCount: number,
+  seatIndexById: Map<string, number>,
+): { dealerSeatIndex: number; roundIndex: number } {
+  const count = Math.max(1, seatCount)
+  let dealerIdx = 0
+  let rotations = 0
+  for (const hand of handsAsc) {
+    const winnerIdx =
+      hand.winnerSeatId != null
+        ? (seatIndexById.get(hand.winnerSeatId) ?? -1)
+        : -1
+    if (hand.winMethod !== "DRAW" && winnerIdx === dealerIdx) {
+      continue
+    }
+    rotations += 1
+    dealerIdx = (dealerIdx + 1) % count
+  }
+  return {
+    dealerSeatIndex: dealerIdx,
+    roundIndex: Math.floor(rotations / count) % 4,
+  }
+}
+
 export function toLiveSession(
   session: SessionFull,
   seatJoinHand: Record<string, number> = {},
@@ -537,6 +571,11 @@ export function toLiveSession(
 
   const status: LiveSession["status"] =
     session.status === "FINISHED" ? "finished" : "live"
+  const { dealerSeatIndex, roundIndex } = computeDealerAndRound(
+    handsAsc,
+    seatsOrdered.length,
+    seatIndexById,
+  )
 
   return {
     id: session.id,
@@ -553,7 +592,8 @@ export function toLiveSession(
     endedAt: session.endedAt?.toISOString() ?? null,
     status,
     handNumber: handsAsc.length + 1,
-    dealerSeatIndex: handsAsc.length % Math.max(seatsOrdered.length, 1),
+    dealerSeatIndex,
+    roundWind: WINDS_ORDER[roundIndex] ?? "east",
   }
 }
 
@@ -604,6 +644,7 @@ export function serializeSession(
     scannerUserIds: string[]
     seatJoinHand?: Record<string, number>
     retiredPlayers?: RetiredSeatRecord[]
+    started?: boolean
   },
 ) {
   const duration = liveDurationForSession(session)
@@ -617,12 +658,25 @@ export function serializeSession(
   const roundOffset = manageState?.roundOffset ?? 0
   const dealerSeatIndex =
     (((base.dealerSeatIndex + dealerOffset) % seatLen) + seatLen) % seatLen
-  const handNumber = Math.max(1, base.handNumber + roundOffset)
+  const baseRoundIdx = WINDS_ORDER.indexOf(base.roundWind ?? "east")
+  const roundIndex = (((baseRoundIdx + roundOffset) % 4) + 4) % 4
+  const roundWind = WINDS_ORDER[roundIndex] ?? "east"
+  const handNumber = base.handNumber
+
+  // Current seat winds rotate with the dealer: dealer is always Tong (east),
+  // followed by Nan (south), Xi (west), Pei (north).
+  const rotatedSeats = base.seats.map((seat, idx) => ({
+    ...seat,
+    wind: WINDS_ORDER[(idx - dealerSeatIndex + seatLen) % seatLen] ?? seat.wind,
+  }))
 
   return {
     ...base,
+    seats: rotatedSeats,
     handNumber,
     dealerSeatIndex,
+    roundWind,
+    sessionStarted: Boolean(manageState?.started || session.hands.length > 0),
     scannerUserIds: manageState?.scannerUserIds ?? [],
     captainUserId: session.captainUserId,
     captainName: session.captain.name,
@@ -834,6 +888,16 @@ export async function finishGameSession(sessionId: string) {
         ...(isTournamentSession ? { tournamentTableId: null } : {}),
       },
     })
+
+    if (session.meetId) {
+      await tx.meet.updateMany({
+        where: {
+          id: session.meetId,
+          status: { in: ["OPEN", "FULL"] },
+        },
+        data: { status: "COMPLETED" },
+      })
+    }
 
     const ranked = [...session.seats].sort(
       (a, b) => b.netPoints - a.netPoints,

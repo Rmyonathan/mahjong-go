@@ -10,6 +10,15 @@ export interface ScanDetectedTile {
   rows?: number[]
 }
 
+export interface ScanTiming {
+  phoneMs?: number
+  hostNetworkMs?: number
+  aiMs?: number
+  serverMs?: number
+  totalMs?: number
+  payloadKb?: number
+}
+
 export interface ScanHandResult {
   /** Validated tile IDs in reading order (from `detected[].id`). */
   tiles: string[]
@@ -17,6 +26,7 @@ export interface ScanHandResult {
   detected: ScanDetectedTile[]
   /** Kept for client compatibility; unused with count-first format. */
   uncertainIndices: number[]
+  timing?: ScanTiming
 }
 
 const SUIT_PREFIXES = ["dots", "bamboo", "characters"] as const

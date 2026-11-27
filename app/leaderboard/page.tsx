@@ -152,6 +152,16 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     })
   }
   const displayRows = boardRows.length > 0 ? boardRows : searchExtra
+  const topRankRows = query ? displayRows : displayRows.slice(0, 10)
+  const topRecentSessions = visibleSessions.slice(0, 3)
+
+  const allRankParams = new URLSearchParams()
+  if (query) allRankParams.set("q", query)
+  const rawBoardParam = readParam(params.board)
+  if (rawBoardParam) allRankParams.set("board", rawBoardParam)
+  const allRanksHref = allRankParams.toString()
+    ? `/leaderboard/all?${allRankParams.toString()}`
+    : "/leaderboard/all"
 
   const playerMap = await getPlayersByIds([
     seasonKpi.biggestHand.playerId,
@@ -364,7 +374,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map((row) => (
+                  {topRankRows.map((row) => (
                     <tr
                       key={row.playerId}
                       className={cn(
@@ -427,7 +437,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
             </div>
 
             <ol className="flex flex-col gap-2 md:hidden">
-              {displayRows.map((row) => (
+              {topRankRows.map((row) => (
                 <li
                   key={row.playerId}
                   className={cn(
@@ -473,6 +483,17 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                 </li>
               ))}
             </ol>
+
+            {!query && displayRows.length > 10 ? (
+              <div className="mt-4">
+                <Link
+                  href={allRanksHref}
+                  className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-jade-soft"
+                >
+                  See all ({displayRows.length}) →
+                </Link>
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -496,7 +517,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                 No finished tables yet — end a live session to appear here.
               </li>
             ) : null}
-            {visibleSessions.map((entry) => {
+            {topRecentSessions.map((entry) => {
               const winner = playerMap.get(entry.winnerId)
               const body = (
                 <>
@@ -539,6 +560,16 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               )
             })}
           </ol>
+          {visibleSessions.length > 3 ? (
+            <div className="mt-4">
+              <Link
+                href="/leaderboard/sessions"
+                className="inline-flex h-10 items-center border-[2px] border-jade-ink bg-card px-4 font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-jade-soft"
+              >
+                See all ({visibleSessions.length}) →
+              </Link>
+            </div>
+          ) : null}
           {archiveLocked ? (
             <ArchiveUpgradeTeaser accountName={viewerUser?.name} />
           ) : null}

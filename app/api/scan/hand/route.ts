@@ -83,8 +83,11 @@ export async function POST(request: Request) {
   }
 
   const started = Date.now()
+  const payloadKb = Math.round((imageBase64.length * 0.75) / 1024)
+  let openrouterMs = 0
 
   try {
+    const aiStarted = Date.now()
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
@@ -134,6 +137,7 @@ export async function POST(request: Request) {
         finish_reason?: string | null
       }>
     }
+    openrouterMs = Date.now() - aiStarted
 
     if (!response.ok) {
       const upstream =
@@ -209,11 +213,29 @@ export async function POST(request: Request) {
       )
     }
 
+    const serverMs = Date.now() - started
+    console.log(
+      "[SCAN TIMING]",
+      JSON.stringify({
+        model: OPENROUTER_MODEL,
+        payloadKb,
+        openrouterMs,
+        serverMs,
+        finish: finishReason ?? null,
+        tiles: result.tiles.length,
+      }),
+    )
+
     // AI detects tiles only — scoring stays in lib/mahjong/engine.ts on the client
     return NextResponse.json({
       ...result,
       model: OPENROUTER_MODEL,
-      ms: Date.now() - started,
+      ms: serverMs,
+      timing: {
+        aiMs: openrouterMs,
+        serverMs,
+        payloadKb,
+      },
     })
   } catch (error) {
     if (isTimeoutError(error)) {

@@ -825,9 +825,11 @@ export function calculateHandScore(
   }
 
   // -------------------------------------------------------------------------
-  // Gabungan pola & total (maksimal 13 Faan)
+  // Gabungan pola & total (maksimal 13 Faan) — urutkan Faan terbesar dulu
   // -------------------------------------------------------------------------
-  const patterns = [...flowerPatterns, ...effectiveHand]
+  const patterns = [...effectiveHand, ...flowerPatterns].sort(
+    (a, b) => b.fan - a.fan,
+  )
   const rawFan = patterns.reduce((sum, p) => sum + p.fan, 0)
   const totalFan = Math.min(MAX_FAN, rawFan)
 

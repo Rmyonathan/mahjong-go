@@ -9,7 +9,11 @@ import {
   retireSeat,
   saveSessionManageState,
 } from "@/lib/session/manage"
-import { getGameSession, serializeSession } from "@/lib/session/service"
+import {
+  computeDealerAndRound,
+  getGameSession,
+  serializeSession,
+} from "@/lib/session/service"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -46,18 +50,72 @@ export async function POST(request: Request, { params }: Params) {
     bookingId?: string
     replacementName?: string
     handId?: string
+    seatIdsInWindOrder?: string[]
   }
 
   const seatCount = Math.max(existing.seats.length, 1)
+  const seatsOrdered = [...existing.seats].sort((a, b) => a.seatOrder - b.seatOrder)
+  const seatIndexById = new Map(seatsOrdered.map((s, idx) => [s.id, idx]))
+  const handsAsc = [...existing.hands].sort((a, b) => a.handNumber - b.handNumber)
   const baseHands = existing.hands.length
-  const baseDealer = baseHands % seatCount
+  const { dealerSeatIndex: baseDealer, roundIndex: baseRoundIndex } =
+    computeDealerAndRound(handsAsc, seatCount, seatIndexById)
   const cur = await getSessionManageState(sessionId)
 
   try {
-    if (body.action === "set_dealer") {
+    if (
+      body.action === "start_session" &&
+      Array.isArray(body.seatIdsInWindOrder)
+    ) {
+      const order = body.seatIdsInWindOrder
+      const validIds = new Set(seatsOrdered.map((s) => s.id))
+      if (
+        order.length !== seatsOrdered.length ||
+        new Set(order).size !== seatsOrdered.length ||
+        order.some((id) => !validIds.has(id))
+      ) {
+        return NextResponse.json(
+          { error: "Please assign a unique player to each wind (Tong, Nan, Xi, Pei)" },
+          { status: 400 },
+        )
+      }
+      const DB_WINDS = ["EAST", "SOUTH", "WEST", "NORTH"] as const
+      await prisma.$transaction(
+        order.map((seatId, idx) =>
+          prisma.sessionSeat.update({
+            where: { id: seatId },
+            data: {
+              seatOrder: idx,
+              wind: DB_WINDS[idx] ?? "EAST",
+            },
+          }),
+        ),
+      )
+      await saveSessionManageState(sessionId, {
+        ...cur,
+        dealerOffset: 0,
+        roundOffset: 0,
+        started: true,
+      })
+    } else if (body.action === "set_dealer") {
       const target = Math.max(0, Math.min(seatCount - 1, Number(body.seatIndex ?? 0)))
       const dealerOffset = (((target - baseDealer) % seatCount) + seatCount) % seatCount
       await saveSessionManageState(sessionId, { ...cur, dealerOffset })
+    } else if (body.action === "set_round_wind") {
+      const WINDS = ["east", "south", "west", "north"] as const
+      const targetIdx = WINDS.indexOf(
+        ((body as { roundWind?: string }).roundWind ?? "") as (typeof WINDS)[number],
+      )
+      if (targetIdx < 0) {
+        return NextResponse.json({ error: "Invalid roundWind" }, { status: 400 })
+      }
+      const roundOffset = (((targetIdx - baseRoundIndex) % 4) + 4) % 4
+      await saveSessionManageState(sessionId, { ...cur, roundOffset })
+    } else if (body.action === "cycle_round_wind") {
+      await saveSessionManageState(sessionId, {
+        ...cur,
+        roundOffset: (cur.roundOffset + 1) % 4,
+      })
     } else if (body.action === "set_round") {
       const targetRound = Math.max(1, Math.min(16, Number(body.roundNumber ?? 1)))
       const targetHandNumber = (targetRound - 1) * seatCount + 1

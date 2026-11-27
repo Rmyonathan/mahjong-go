@@ -190,6 +190,10 @@ export interface LiveSession {
   status: "live" | "finished"
   handNumber: number
   dealerSeatIndex: number
+  /** Current table round wind (Tong → Nan → Xi → Pei after 1 full putaran). */
+  roundWind?: LiveWind
+  /** True once the captain confirmed initial Tong/Nan/Xi/Pei order (or after hand 1). */
+  sessionStarted?: boolean
   /** Free / Pro / Club auto-end metadata (from API serialize). */
   durationTier?: "club" | "pro" | "free"
   maxHours?: number | null
@@ -427,6 +431,6 @@ export function formatElapsed(ms: number) {
 }
 
 export function roundBadge(session: LiveSession) {
-  const wind = WIND_META[session.seats[session.dealerSeatIndex]?.wind ?? "east"]
-  return `${wind.label.toUpperCase()} ${Math.ceil(session.handNumber / session.seats.length)}`
+  const wind = WIND_META[session.roundWind ?? "east"]
+  return `${wind.badge} ${wind.label.toUpperCase()} ROUND`
 }

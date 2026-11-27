@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import {
   ChevronDown,
   LogOut,
+  RefreshCw,
   Search,
   Shield,
   Sparkles,
@@ -61,6 +62,7 @@ export function SiteHeader() {
   const [authReady, setAuthReady] = useState(false)
   const [liveCount, setLiveCount] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [refreshingPage, setRefreshingPage] = useState(false)
   const [proModalOpen, setProModalOpen] = useState(false)
   const [clubOpen, setClubOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -455,6 +457,24 @@ export function SiteHeader() {
                 </button>
 
                 <NotificationBell loggedIn={loggedIn} />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefreshingPage(true)
+                    window.location.reload()
+                  }}
+                  className="tap-press grid size-8 place-items-center rounded-full border border-[#102A20]/10 bg-white text-jade-ink shadow-sm hover:bg-jade-soft sm:size-10"
+                  aria-label="Refresh page"
+                  title="Refresh"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-3.5 sm:size-4",
+                      refreshingPage && "animate-spin",
+                    )}
+                  />
+                </button>
 
                 <button
                   type="button"

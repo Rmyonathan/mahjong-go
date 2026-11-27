@@ -63,6 +63,7 @@ export function CameraScanModal({
   onClose,
   onConfirm,
   ruleset: lockedRuleset,
+  roundWind: tableRoundWind = "east",
 }: {
   open: boolean
   seats: LiveSeat[]
@@ -70,6 +71,8 @@ export function CameraScanModal({
   onConfirm: (hand: ConfirmedScanHand) => void
   /** Table hitungan from meet/session — locked for the live table */
   ruleset?: RuleVariant
+  /** Current table round wind (Tong -> Nan -> Xi -> Pei) */
+  roundWind?: LiveWind
 }) {
   const [step, setStep] = useState<Step>("viewfinder")
   const [error, setError] = useState<string | null>(null)
@@ -100,9 +103,9 @@ export function CameraScanModal({
     const wind = seats[0]?.wind ?? "east"
     setGameContext({
       seatWind: windToSeatLabel(wind),
-      roundWind: "East",
+      roundWind: windToSeatLabel(tableRoundWind),
     })
-  }, [open, seats, lockedRuleset])
+  }, [open, seats, lockedRuleset, tableRoundWind])
 
   useEffect(() => {
     const wind = seats[winnerSeatIndex]?.wind
@@ -249,9 +252,76 @@ export function CameraScanModal({
 
           {step === "review" ? (
             <div className="space-y-5">
+              <div className="jade-card space-y-3 p-3.5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-jade-accent">
+                  1 · Choose winner &amp; win method (autofills bunga &amp; seat wind)
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                      Winner
+                    </span>
+                    <select
+                      value={winnerSeatIndex}
+                      onChange={(event) => {
+                        const next = Number(event.target.value)
+                        setWinnerSeatIndex(next)
+                        if (dealtBySeatIndex === next) {
+                          const fallback = seats.findIndex((_, i) => i !== next)
+                          setDealtBySeatIndex(fallback >= 0 ? fallback : null)
+                        }
+                      }}
+                      className="mt-1 h-11 w-full border-[2px] border-jade-ink bg-card px-2"
+                    >
+                      {seats.map((seat, index) => (
+                        <option key={`${seat.wind}-${index}`} value={index}>
+                          {seat.nickname}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                      Win method
+                    </span>
+                    <select
+                      value={method}
+                      onChange={(event) =>
+                        setMethod(event.target.value as WinMethod)
+                      }
+                      className="mt-1 h-11 w-full border-[2px] border-jade-ink bg-card px-2"
+                    >
+                      <option value="self-draw">Self-draw (Zimo)</option>
+                      <option value="discard">Discard (Dealt in)</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+                      Who dealt in
+                    </span>
+                    <select
+                      disabled={method !== "discard"}
+                      value={dealtBySeatIndex ?? ""}
+                      onChange={(event) =>
+                        setDealtBySeatIndex(Number(event.target.value))
+                      }
+                      className="mt-1 h-11 w-full border-[2px] border-jade-ink bg-card px-2 disabled:opacity-40"
+                    >
+                      {seats.map((seat, index) =>
+                        index === winnerSeatIndex ? null : (
+                          <option key={`${seat.wind}-${index}`} value={index}>
+                            {seat.nickname}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
               <div className="jade-card p-3">
                 <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                  Detected tiles · edit before score
+                  2 · Detected tiles · edit before score
                 </p>
                 <ScannedHandEditor
                   tileIds={tileIds}
@@ -287,10 +357,15 @@ export function CameraScanModal({
                 ) : null}
               </div>
 
-              <GameContextControls
-                context={gameContext}
-                onChange={setGameContext}
-              />
+              <div>
+                <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  Seat &amp; Round wind (autofilled — edit if needed)
+                </p>
+                <GameContextControls
+                  context={gameContext}
+                  onChange={setGameContext}
+                />
+              </div>
 
               <RulesetPicker
                 value={ruleset}
@@ -306,68 +381,6 @@ export function CameraScanModal({
                   ? ` (penyuap −${formatJadeMiles(payout.discarderPays)})`
                   : ` (tiap lawan −${formatJadeMiles(payout.eachPaysSelfDraw)})`}
               </p>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                    Winner
-                  </span>
-                  <select
-                    value={winnerSeatIndex}
-                    onChange={(event) => {
-                      const next = Number(event.target.value)
-                      setWinnerSeatIndex(next)
-                      if (dealtBySeatIndex === next) {
-                        const fallback = seats.findIndex((_, i) => i !== next)
-                        setDealtBySeatIndex(fallback >= 0 ? fallback : null)
-                      }
-                    }}
-                    className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2"
-                  >
-                    {seats.map((seat, index) => (
-                      <option key={seat.wind} value={index}>
-                        {seat.nickname}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                    Win method
-                  </span>
-                  <select
-                    value={method}
-                    onChange={(event) =>
-                      setMethod(event.target.value as WinMethod)
-                    }
-                    className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2"
-                  >
-                    <option value="self-draw">Self-draw</option>
-                    <option value="discard">Discard</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
-                    Who dealt in
-                  </span>
-                  <select
-                    disabled={method !== "discard"}
-                    value={dealtBySeatIndex ?? ""}
-                    onChange={(event) =>
-                      setDealtBySeatIndex(Number(event.target.value))
-                    }
-                    className="mt-1 h-10 w-full border-[2px] border-jade-ink bg-card px-2 disabled:opacity-40"
-                  >
-                    {seats.map((seat, index) =>
-                      index === winnerSeatIndex ? null : (
-                        <option key={seat.wind} value={index}>
-                          {seat.nickname}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-              </div>
 
               <div className="jade-card-accent p-4">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-jade-accent">
@@ -405,18 +418,18 @@ export function CameraScanModal({
                 </p>
               ) : null}
 
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="flex flex-col-reverse gap-2.5 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => setStep("viewfinder")}
-                  className="inline-flex h-12 flex-1 items-center justify-center border-[2px] border-jade-ink bg-card font-mono text-[11px] uppercase tracking-[0.16em]"
+                  className="inline-flex h-12 w-full items-center justify-center border-[2px] border-jade-ink bg-card font-mono text-[11px] uppercase tracking-[0.16em] sm:flex-1"
                 >
                   Rescan
                 </button>
                 <button
                   type="button"
                   onClick={confirm}
-                  className="scan-cta inline-flex h-12 flex-[1.4] items-center justify-center rounded-none font-mono text-[11px] uppercase tracking-[0.16em]"
+                  className="scan-cta inline-flex h-14 w-full items-center justify-center rounded-none font-mono text-xs font-semibold uppercase tracking-[0.16em] sm:h-12 sm:flex-[1.6]"
                 >
                   Confirm & log hand
                 </button>

@@ -34,6 +34,7 @@ import type { GameContext, HandTile, RuleVariant, Tile } from "@/lib/mahjong/typ
 import {
   computePayoutDeltas,
   type LiveSeat,
+  type LiveWind,
   type WinMethod,
 } from "@/lib/session/live-demo"
 import { formatPlainPoints, formatSignedPoints } from "@/lib/mock/jade-board"
@@ -47,6 +48,16 @@ function createInstanceId() {
   return `t_${Date.now()}_${Math.random().toString(36).slice(2)}`
 }
 
+function windToSeatLabel(wind: LiveWind): GameContext["seatWind"] {
+  const map: Record<LiveWind, GameContext["seatWind"]> = {
+    east: "East",
+    south: "South",
+    west: "West",
+    north: "North",
+  }
+  return map[wind]
+}
+
 type Step = "tiles" | "assign"
 
 export function HandLogModal({
@@ -55,12 +66,14 @@ export function HandLogModal({
   onClose,
   onConfirm,
   ruleset: lockedRuleset,
+  roundWind: tableRoundWind = "east",
 }: {
   open: boolean
   seats: LiveSeat[]
   onClose: () => void
   onConfirm: (hand: ConfirmedScanHand) => void
   ruleset?: RuleVariant
+  roundWind?: LiveWind
 }) {
   const [step, setStep] = React.useState<Step>("tiles")
   const [mainHand, setMainHand] = React.useState<HandTile[]>([])
@@ -104,8 +117,19 @@ export function HandLogModal({
     setMethod("discard")
     setDealtBySeatIndex(seats.length > 1 ? 1 : null)
     setRuleset(lockedRuleset ?? "jade-hk")
-    setGameContext({ seatWind: "East", roundWind: "East" })
-  }, [open, seats.length, lockedRuleset])
+    const seatWind = windToSeatLabel(seats[0]?.wind ?? "east")
+    const roundWind = windToSeatLabel(tableRoundWind)
+    setGameContext({ seatWind, roundWind })
+  }, [open, seats, lockedRuleset, tableRoundWind])
+
+  React.useEffect(() => {
+    const wind = seats[winnerSeatIndex]?.wind
+    if (!wind) return
+    setGameContext((prev) => ({
+      ...prev,
+      seatWind: windToSeatLabel(wind),
+    }))
+  }, [winnerSeatIndex, seats])
 
   const isMainFull = mainHand.length >= MAX_MAIN_TILES
   const isFlowerFull = flowerHand.length >= MAX_FLOWER_TILES
@@ -454,11 +478,11 @@ export function HandLogModal({
               ))}
             </ul>
 
-            <div className="mt-auto flex gap-2">
+            <div className="mt-auto flex flex-col-reverse gap-2.5 sm:flex-row">
               <button
                 type="button"
                 onClick={() => setStep("tiles")}
-                className="h-11 flex-1 border-[2px] border-jade-ink bg-card font-mono text-[10px] uppercase tracking-[0.14em]"
+                className="h-12 w-full border-[2px] border-jade-ink bg-card font-mono text-[11px] uppercase tracking-[0.14em] sm:flex-1"
               >
                 ← Edit tiles
               </button>
@@ -480,7 +504,7 @@ export function HandLogModal({
                     deltas,
                   })
                 }
-                className="scan-cta h-11 flex-[1.4] font-mono text-[10px] uppercase tracking-[0.16em]"
+                className="scan-cta h-14 w-full font-mono text-xs font-semibold uppercase tracking-[0.16em] sm:h-12 sm:flex-[1.6]"
               >
                 Log {formatPlainPoints(winnerPoints)}
               </button>

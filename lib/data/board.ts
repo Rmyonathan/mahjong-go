@@ -93,6 +93,20 @@ export async function getActiveSeason(): Promise<SeasonMeta | null> {
   }
 }
 
+function biggestComboLabel(combosJson: unknown): string | null {
+  if (!Array.isArray(combosJson)) return null
+  const valid = combosJson
+    .filter(
+      (c): c is { label: string; fan: number } =>
+        Boolean(c) &&
+        typeof c === "object" &&
+        typeof (c as { label?: unknown }).label === "string" &&
+        (c as { label: string }).label.trim().toLowerCase() !== "draw",
+    )
+    .sort((a, b) => (Number(b.fan) || 0) - (Number(a.fan) || 0))
+  return valid[0]?.label ?? null
+}
+
 export async function getSeasonKpi(): Promise<SeasonKpi | null> {
   const season = await prisma.season.findFirst({ where: { isActive: true } })
   if (!season) return null
@@ -173,7 +187,9 @@ export async function getSeasonKpi(): Promise<SeasonKpi | null> {
         biggest?.winnerSeat?.user?.playerId ??
         season.biggestHandPlayerId,
       points: biggest?.points ?? season.biggestHandPts,
-      combo: season.biggestHandCombo || "Winning hand",
+      combo:
+        biggestComboLabel(biggest?.combosJson) ??
+        (season.biggestHandCombo || "Winning hand"),
     },
     topCombo: {
       name: topComboName,
@@ -323,7 +339,7 @@ export async function getRecentSessions(): Promise<RecentSessionCard[]> {
       },
     },
     orderBy: { startedAt: "desc" },
-    take: 12,
+    take: 200,
   })
 
   return sessions.map((session) => {
@@ -509,11 +525,16 @@ export async function getDbSessionDetail(
     race,
     hands,
     highlights: {
-      biggestHand: {
-        playerId: standings[0]?.playerId ?? paddedIds[0],
-        points: biggestHand,
-        combo: "—",
-      },
+      biggestHand: (() => {
+        const top = hands
+          .filter((h) => !h.isDraw && h.points > 0)
+          .sort((a, b) => b.points - a.points)[0]
+        return {
+          playerId: top?.winnerId ?? standings[0]?.playerId ?? paddedIds[0],
+          points: top?.points ?? biggestHand,
+          combo: top ? biggestComboLabel(top.combos) ?? "—" : "—",
+        }
+      })(),
       biggestPayout: {
         playerId: standings[0]?.playerId ?? paddedIds[0],
         points: Math.max(0, ...standings.map((row) => row.net)),
