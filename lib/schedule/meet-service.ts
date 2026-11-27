@@ -58,6 +58,8 @@ const meetInclude = {
               nickname: true,
               initials: true,
               experienceLevelId: true,
+              avatarUrl: true,
+              frameId: true,
             },
           },
         },
@@ -81,6 +83,8 @@ const meetInclude = {
                   nickname: true,
                   initials: true,
                   experienceLevelId: true,
+                  avatarUrl: true,
+                  frameId: true,
                 },
               },
             },
@@ -257,6 +261,11 @@ export function serializeMeet(
             booking.user.name,
           badge:
             player?.initials?.slice(0, 1) ?? booking.user.name.slice(0, 1),
+          initials:
+            player?.initials ??
+            booking.user.name.slice(0, 2).toUpperCase(),
+          avatarUrl: player?.avatarUrl ?? null,
+          frameId: player?.frameId ?? "classic",
           rating,
           levelId: player?.experienceLevelId ?? "pemula",
           seatNumber: booking.seatNumber,
@@ -280,6 +289,10 @@ export function serializeMeet(
           nickname: display,
           badge:
             player?.initials?.slice(0, 1) ?? fullName.slice(0, 1).toUpperCase(),
+          initials:
+            player?.initials ?? fullName.slice(0, 2).toUpperCase(),
+          avatarUrl: player?.avatarUrl ?? null,
+          frameId: player?.frameId ?? "classic",
           rating,
           levelId: player?.experienceLevelId ?? "pemula",
           seatNumber: seat.seatOrder + 1,

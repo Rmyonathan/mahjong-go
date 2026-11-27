@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { KeyRound, Search } from "lucide-react"
 
 import { JadePageLoader } from "@/components/jade-page-loader"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { ScoutPlayerModal } from "@/components/players/scout-player-modal"
 import { BookSeatModal } from "@/components/schedule/book-seat-modal"
 import { CreateMeetModal } from "@/components/schedule/create-meet-modal"
@@ -978,9 +979,15 @@ function MeetCard({
                   )}
                 >
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="grid size-5 place-items-center border border-jade-ink bg-parchment font-serif text-[10px]">
-                      {player.badge}
-                    </span>
+                    <PlayerAvatar
+                      initials={player.initials ?? player.badge}
+                      name={player.name}
+                      avatarUrl={player.avatarUrl}
+                      frameId={player.frameId}
+                      size="xs"
+                      showBadge={false}
+                      className="size-6"
+                    />
                     {loggedIn && player.playerId ? (
                       <button
                         type="button"

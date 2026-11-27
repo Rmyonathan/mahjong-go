@@ -20,6 +20,9 @@ export interface ApiRosterPlayer {
   name: string
   nickname: string
   badge: string
+  initials?: string
+  avatarUrl?: string | null
+  frameId?: string
   rating: number
   levelId: string
   seatNumber: number | null

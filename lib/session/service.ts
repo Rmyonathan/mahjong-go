@@ -411,6 +411,11 @@ export function toLiveSession(
     playerId: seat.user?.playerId ?? seat.userId,
     name: displayName(seat),
     nickname: displayNickname(seat),
+    initials:
+      seat.user?.player?.initials ??
+      displayName(seat).slice(0, 2).toUpperCase(),
+    avatarUrl: seat.user?.player?.avatarUrl ?? null,
+    frameId: seat.user?.player?.frameId ?? "classic",
     net: seat.netPoints,
     wins: seat.wins,
     dealtIn: seat.dealtInCount,

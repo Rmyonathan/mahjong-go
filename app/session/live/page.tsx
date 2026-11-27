@@ -7,6 +7,7 @@ import { ChevronLeft, Share2 } from "lucide-react"
 
 import { FormSquares } from "@/components/jade/form-squares"
 import { TileStrip } from "@/components/jade/tile-strip"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { ScoutPlayerModal } from "@/components/players/scout-player-modal"
 import { HandLogModal } from "@/components/session/hand-log-modal"
 import {
@@ -487,14 +488,23 @@ function LiveSessionInner() {
           return (
             <article key={seat.wind} className="jade-card relative p-4">
               <div className="flex items-start justify-between gap-2">
-                <span
-                  className={cn(
-                    "grid size-10 place-items-center border-[2px] border-jade-ink font-serif text-xl",
-                    dealer ? "bg-jade-gold" : "bg-parchment",
-                  )}
-                >
-                  {WIND_META[seat.wind].badge}
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className={cn(
+                      "grid size-10 place-items-center border-[2px] border-jade-ink font-serif text-xl",
+                      dealer ? "bg-jade-gold" : "bg-parchment",
+                    )}
+                  >
+                    {WIND_META[seat.wind].badge}
+                  </span>
+                  <PlayerAvatar
+                    initials={seat.initials ?? seat.name.slice(0, 2).toUpperCase()}
+                    name={seat.name}
+                    avatarUrl={seat.avatarUrl}
+                    frameId={seat.frameId}
+                    size="sm"
+                  />
+                </div>
                 {dealer ? (
                   <span className="border border-jade-gold bg-jade-gold px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-jade-ink">
                     Dealer

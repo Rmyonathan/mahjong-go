@@ -141,6 +141,9 @@ export interface LiveSeat {
   playerId: string | null
   name: string
   nickname: string
+  initials?: string
+  avatarUrl?: string | null
+  frameId?: string
   net: number
   wins: number
   dealtIn: number

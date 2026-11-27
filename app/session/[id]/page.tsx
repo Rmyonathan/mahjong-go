@@ -6,6 +6,7 @@ import { FormSquares } from "@/components/jade/form-squares"
 import { GameLog } from "@/components/jade/game-log"
 import { ScoreRaceChart } from "@/components/jade/score-race-chart"
 import { SessionActions } from "@/components/jade/session-actions"
+import { PlayerAvatar } from "@/components/players/player-avatar"
 import { FinishedSessionNewspaper } from "@/components/share/finished-session-share"
 import {
   getActiveSeason,
@@ -242,9 +243,13 @@ function SessionDetailView({
                           ? "3rd"
                           : "4th"}
                   </span>
-                  <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#102A20]/15 bg-[#F6F4EE] font-mono text-xs">
-                    {player.initials}
-                  </div>
+                  <PlayerAvatar
+                    initials={player.initials}
+                    name={player.name}
+                    avatarUrl={player.avatarUrl}
+                    frameId={player.frameId}
+                    size="sm"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-serif text-lg leading-none sm:text-xl">
                       {player.name}
