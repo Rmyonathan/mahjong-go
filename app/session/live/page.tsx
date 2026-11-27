@@ -10,6 +10,10 @@ import { TileStrip } from "@/components/jade/tile-strip"
 import { ScoutPlayerModal } from "@/components/players/scout-player-modal"
 import { HandLogModal } from "@/components/session/hand-log-modal"
 import {
+  ManageTableModal,
+  type ManageableSession,
+} from "@/components/session/manage-table-modal"
+import {
   CameraScanModal,
   type ConfirmedScanHand,
 } from "@/components/session/camera-scan-modal"
@@ -35,6 +39,8 @@ const RACE_COLORS = [
   "var(--jade-ink)",
   "var(--jade-red)",
 ]
+
+const RETIRED_RACE_COLORS = ["#6B7280", "#7C3AED", "#0284C7"]
 
 export default function LiveSessionPage() {
   return (
@@ -62,6 +68,8 @@ function LiveSessionInner() {
   const [remainingMs, setRemainingMs] = useState<number | null>(null)
   const [handLogOpen, setHandLogOpen] = useState(false)
   const [cameraScanOpen, setCameraScanOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
+  const [accessDenied, setAccessDenied] = useState<string | null>(null)
   const [isPro, setIsPro] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -90,9 +98,17 @@ function LiveSessionInner() {
       )
       throw new Error("Login required")
     }
+    if (response.status === 403) {
+      setAccessDenied(
+        data.error ??
+          "Only seated players can view this live table — wait to be promoted from the waitlist",
+      )
+      return null
+    }
     if (!response.ok || !data.session) {
       throw new Error(data.error ?? "Session not found")
     }
+    setAccessDenied(null)
     setSession(data.session)
     setIsCaptain(Boolean(data.viewer?.isCaptain))
     setCanLogHands(Boolean(data.viewer?.canLogHands))
@@ -210,16 +226,30 @@ function LiveSessionInner() {
   }
 
   useEffect(() => {
-    if (!session || session.status !== "live" || pendingInvitesCount === 0 || !sessionId) {
+    if (!session || session.status !== "live" || !sessionId) {
       return
     }
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState === "visible" &&
+        !handLogOpen &&
+        !cameraScanOpen &&
+        !manageOpen &&
+        !busy
+      ) {
         void refresh(sessionId).catch(() => undefined)
       }
-    }, 4000)
+    }, 3000)
     return () => window.clearInterval(id)
-  }, [session, sessionId, pendingInvitesCount, refresh])
+  }, [
+    session,
+    sessionId,
+    refresh,
+    handLogOpen,
+    cameraScanOpen,
+    manageOpen,
+    busy,
+  ])
 
   function onDraw() {
     if (!session || session.status !== "live" || busy || pendingInvitesCount > 0) return
@@ -322,6 +352,26 @@ function LiveSessionInner() {
     return { biggest, hot }
   }, [session])
 
+  if (accessDenied) {
+    return (
+      <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center px-4 py-16 text-center">
+        <div className="jade-card p-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-jade-gold">
+            Seat required
+          </p>
+          <h1 className="mt-2 font-serif text-3xl">Table Locked</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{accessDenied}</p>
+          <Link
+            href="/schedule"
+            className="tap-press mt-5 inline-flex h-10 items-center rounded-full bg-jade-accent px-5 text-sm font-semibold text-white"
+          >
+            Back to Schedule
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
   if (!ready || !session) {
     return (
       <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-4 py-16">
@@ -337,6 +387,8 @@ function LiveSessionInner() {
     null
   const canControlTable = isCaptain || canLogHands
   const waitingForInvites = pendingInvitesCount > 0
+  const waitlistQueue =
+    (session as ManageableSession).waitlistQueue ?? []
 
   if (session.status === "finished") {
     return (
@@ -399,9 +451,19 @@ function LiveSessionInner() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p className="mr-auto font-serif text-xl sm:mr-2">{session.title}</p>
+          {isCaptain ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setManageOpen(true)}
+              className="border-[2px] border-jade-ink bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-ink hover:bg-jade-soft disabled:opacity-40"
+            >
+              Edit table
+            </button>
+          ) : null}
           <button
             type="button"
-            disabled={busy || !canControlTable}
+            disabled={busy || !isCaptain}
             onClick={() => void onEnd()}
             className="border-[2px] border-jade-red px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-red disabled:opacity-40"
           >
@@ -484,6 +546,24 @@ function LiveSessionInner() {
           )
         })}
       </section>
+
+      {isCaptain && waitlistQueue.length > 0 ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-jade-gold/45 bg-jade-gold/12 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-jade-ink">
+            <span className="rounded-full bg-jade-gold px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-jade-ink">
+              Waitlist · {waitlistQueue.length}
+            </span>
+            <span>{waitlistQueue.map((w) => w.name).join(", ")}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setManageOpen(true)}
+            className="tap-press rounded-full border border-[#102A20]/15 bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-jade-ink"
+          >
+            Edit table →
+          </button>
+        </div>
+      ) : null}
 
       {waitingForInvites ? (
         <div
@@ -599,6 +679,12 @@ function LiveSessionInner() {
         playerId={scoutPlayerId}
         onClose={() => setScoutPlayerId(null)}
       />
+      <ManageTableModal
+        open={manageOpen}
+        session={session as ManageableSession}
+        onClose={() => setManageOpen(false)}
+        onUpdated={(next) => setSession(next)}
+      />
     </main>
   )
 }
@@ -640,9 +726,11 @@ function LiveGameLog({
                     <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                       Hand {String(hand.handNo).padStart(2, "0")}
                       {winner
-                        ? ` · ${winner.nickname} · ${hand.method}`
+                        ? ` · ${hand.winnerName ?? winner.nickname} · ${hand.method}`
                         : " · Draw"}
-                      {dealt ? ` · dealt by ${dealt.nickname}` : ""}
+                      {dealt
+                        ? ` · dealt by ${hand.dealtName ?? dealt.nickname}`
+                        : ""}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {hand.combos.map((combo) => (
@@ -704,7 +792,8 @@ function LiveGameLog({
                           delta < 0 && "text-jade-red",
                         )}
                       >
-                        {seat.nickname} {formatSignedPoints(delta)}
+                        {hand.seatNames?.[index] ?? seat.nickname}{" "}
+                        {formatSignedPoints(delta)}
                       </span>
                     )
                   })}
@@ -723,8 +812,14 @@ function LiveScoreRace({ session }: { session: LiveSession }) {
   const height = 220
   const pad = { top: 14, right: 12, bottom: 24, left: 40 }
   const series = session.race
+  const retiredRaces = session.retiredRaces ?? []
   const handCount = Math.max(...series.map((s) => s.length - 1), 1)
-  const allValues = series.flat()
+  const allValues = [
+    ...series.flat(),
+    ...retiredRaces.flatMap((r) =>
+      r.values.filter((v): v is number => v != null),
+    ),
+  ]
   const minY = Math.min(0, ...allValues)
   const maxY = Math.max(0, ...allValues)
   const spanY = maxY - minY || 1
@@ -776,6 +871,45 @@ function LiveScoreRace({ session }: { session: LiveSession }) {
               </g>
             )
           })}
+          {retiredRaces.map((retired, rIdx) => {
+            const color = RETIRED_RACE_COLORS[rIdx % RETIRED_RACE_COLORS.length]
+            const pts = retired.values
+              .map((value, i) => ({ value, i }))
+              .filter(
+                (entry): entry is { value: number; i: number } =>
+                  entry.value != null,
+              )
+            const d = pts
+              .map(
+                (entry, idx) =>
+                  `${idx === 0 ? "M" : "L"} ${x(entry.i)} ${y(entry.value)}`,
+              )
+              .join(" ")
+            return (
+              <g key={`retired-${retired.label}-${rIdx}`}>
+                {pts.length > 1 ? (
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                    strokeDasharray="4 3"
+                  />
+                ) : null}
+                {pts.map((entry) => (
+                  <circle
+                    key={entry.i}
+                    cx={x(entry.i)}
+                    cy={y(entry.value)}
+                    r="3"
+                    fill="var(--bg-card)"
+                    stroke={color}
+                    strokeWidth="2"
+                  />
+                ))}
+              </g>
+            )
+          })}
         </svg>
         <div className="mt-2 flex flex-wrap gap-3 px-1">
           {session.seats.map((seat, index) => (
@@ -788,6 +922,21 @@ function LiveScoreRace({ session }: { session: LiveSession }) {
                 style={{ background: RACE_COLORS[index % RACE_COLORS.length] }}
               />
               {seat.nickname}
+            </span>
+          ))}
+          {retiredRaces.map((retired, rIdx) => (
+            <span
+              key={`legend-${retired.label}-${rIdx}`}
+              className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground"
+            >
+              <span
+                className="size-2.5 border border-dashed border-jade-ink"
+                style={{
+                  background:
+                    RETIRED_RACE_COLORS[rIdx % RETIRED_RACE_COLORS.length],
+                }}
+              />
+              {retired.label}
             </span>
           ))}
         </div>

@@ -16,8 +16,10 @@ import {
   type LiveSeat,
   type LiveSession,
   type LiveWind,
+  type RetiredRaceSeries,
   type WinMethod,
 } from "@/lib/session/live-demo"
+import type { RetiredSeatRecord } from "@/lib/session/manage"
 
 // EDIT HERE — ELO K-factor used when a session is finished
 export const ELO_K_FACTOR = 32
@@ -392,7 +394,11 @@ export async function getGameSession(id: string) {
   return ensureLiveSessionNotExpired(session)
 }
 
-export function toLiveSession(session: SessionFull): LiveSession {
+export function toLiveSession(
+  session: SessionFull,
+  seatJoinHand: Record<string, number> = {},
+  retiredPlayers: RetiredSeatRecord[] = [],
+): LiveSession {
   const seatsOrdered = [...session.seats].sort(
     (a, b) => a.seatOrder - b.seatOrder,
   )
@@ -448,6 +454,12 @@ export function toLiveSession(session: SessionFull): LiveSession {
     }) ?? { tileIds: [], winningTileId: "" }
 
     for (let i = 0; i < liveSeats.length; i++) {
+      const seatRow = seatsOrdered[i]!
+      const joinAfterHand = seatJoinHand[seatRow.id] ?? 0
+      if (hand.handNumber <= joinAfterHand) {
+        race[i].push(running[i])
+        continue
+      }
       const delta = deltas[i] ?? 0
       running[i] += delta
       race[i].push(running[i])
@@ -457,12 +469,29 @@ export function toLiveSession(session: SessionFull): LiveSession {
       forms[i] = [...forms[i], formEntry].slice(-8)
     }
 
+    const seatNamesForHand = seatsOrdered.map((seatRow, idx) => {
+      const retired = retiredPlayers.find(
+        (r) =>
+          r.seatId === seatRow.id &&
+          hand.handNumber > r.fromHand &&
+          hand.handNumber <= r.untilHand,
+      )
+      return retired
+        ? `${retired.nickname} (Retired)`
+        : liveSeats[idx]!.nickname
+    })
+
     liveHands.push({
       id: hand.id,
       handNo: hand.handNumber,
       winnerSeatIndex,
+      winnerName:
+        winnerSeatIndex >= 0 ? seatNamesForHand[winnerSeatIndex] : undefined,
       method,
       dealtBySeatIndex,
+      dealtName:
+        dealtBySeatIndex != null ? seatNamesForHand[dealtBySeatIndex] : undefined,
+      seatNames: seatNamesForHand,
       tileIds: tiles.tileIds ?? [],
       winningTileId: tiles.winningTileId ?? "",
       combos,
@@ -475,6 +504,31 @@ export function toLiveSession(session: SessionFull): LiveSession {
   for (let i = 0; i < liveSeats.length; i++) {
     liveSeats[i].form = forms[i]
   }
+
+  const retiredRaces: RetiredRaceSeries[] = retiredPlayers.map((r) => {
+    let acc = 0
+    const values: Array<number | null> = [r.fromHand === 0 ? 0 : null]
+    for (const hand of handsAsc) {
+      if (hand.handNumber < r.fromHand || hand.handNumber > r.untilHand) {
+        values.push(null)
+        continue
+      }
+      if (hand.handNumber === r.fromHand) {
+        values.push(0)
+        continue
+      }
+      const deltasRaw = hand.deltasJson as number[] | Record<string, number>
+      const deltas = Array.isArray(deltasRaw)
+        ? deltasRaw
+        : seatsOrdered.map((seat) => Number(deltasRaw[seat.id] ?? 0))
+      acc += deltas[r.seatOrder] ?? 0
+      values.push(acc)
+    }
+    return {
+      label: `${r.nickname} (Retired)`,
+      values,
+    }
+  })
 
   const status: LiveSession["status"] =
     session.status === "FINISHED" ? "finished" : "live"
@@ -489,6 +543,7 @@ export function toLiveSession(session: SessionFull): LiveSession {
     seats: liveSeats,
     hands: [...liveHands].reverse(),
     race,
+    retiredRaces,
     startedAt: session.startedAt.toISOString(),
     endedAt: session.endedAt?.toISOString() ?? null,
     status,
@@ -536,10 +591,34 @@ export function liveDurationForSession(session: {
   }
 }
 
-export function serializeSession(session: SessionFull) {
+export function serializeSession(
+  session: SessionFull,
+  manageState?: {
+    dealerOffset: number
+    roundOffset: number
+    scannerUserIds: string[]
+    seatJoinHand?: Record<string, number>
+    retiredPlayers?: RetiredSeatRecord[]
+  },
+) {
   const duration = liveDurationForSession(session)
+  const base = toLiveSession(
+    session,
+    manageState?.seatJoinHand ?? {},
+    manageState?.retiredPlayers ?? [],
+  )
+  const seatLen = Math.max(base.seats.length, 1)
+  const dealerOffset = manageState?.dealerOffset ?? 0
+  const roundOffset = manageState?.roundOffset ?? 0
+  const dealerSeatIndex =
+    (((base.dealerSeatIndex + dealerOffset) % seatLen) + seatLen) % seatLen
+  const handNumber = Math.max(1, base.handNumber + roundOffset)
+
   return {
-    ...toLiveSession(session),
+    ...base,
+    handNumber,
+    dealerSeatIndex,
+    scannerUserIds: manageState?.scannerUserIds ?? [],
     captainUserId: session.captainUserId,
     captainName: session.captain.name,
     meetId: session.meetId,

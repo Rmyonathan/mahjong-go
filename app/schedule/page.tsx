@@ -82,14 +82,17 @@ function SchedulePageInner() {
 
   const latestInvite = inviteCodes[inviteCodes.length - 1] ?? null
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent)
     const reqId = ++reqIdRef.current
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
-    setError(null)
-    setRefreshing(true)
+    if (!silent) {
+      setError(null)
+      setRefreshing(true)
+    }
     try {
       const params = new URLSearchParams()
       if (inviteCodes.length) params.set("codes", inviteCodes.join(","))
@@ -215,6 +218,31 @@ function SchedulePageInner() {
       abortRef.current?.abort()
     }
   }, [refresh, invitesReady])
+
+  useEffect(() => {
+    if (!invitesReady) return
+    const timer = window.setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        !bookingMeetId &&
+        !createOpen &&
+        !inviteOpen &&
+        !proOpen &&
+        !scoutPlayerId
+      ) {
+        void refresh({ silent: true })
+      }
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [
+    invitesReady,
+    refresh,
+    bookingMeetId,
+    createOpen,
+    inviteOpen,
+    proOpen,
+    scoutPlayerId,
+  ])
 
   function unlockInvite(code: string) {
     const next = uniqueInviteCodes([...inviteCodes, code])
@@ -998,11 +1026,17 @@ function MeetCard({
               </li>
             ) : null}
           </ul>
-          {canSwapRoster && meet.waitlistCount > 0 ? (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Waitlist ({meet.waitlistCount}) — otomatis pindah ke Seat requests
-              setelah Anda lepas kursi.
-            </p>
+          {meet.waitlistCount > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-jade-gold/40 bg-jade-gold/10 px-3 py-2">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-jade-gold">
+                Waitlist · {meet.waitlistCount}
+              </span>
+              {meet.waitlistNames?.length ? (
+                <span className="text-xs text-jade-ink">
+                  {meet.waitlistNames.join(", ")}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -1065,26 +1099,8 @@ function MeetCard({
               Login to book →
             </Link>
           ) : youConfirmed ? (
-            <div className="space-y-2">
-              <div className="inline-flex h-11 w-full items-center justify-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white">
-                ✓ Seat #{meet.yourBooking?.seatNumber} confirmed
-              </div>
-              {meet.isHost ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    meet.yourBooking &&
-                    onReview(meet.yourBooking.id, "release")
-                  }
-                  className="inline-flex h-9 w-full items-center justify-center rounded-full border border-[#102A20]/15 text-xs font-medium"
-                >
-                  Release my seat (host)
-                </button>
-              ) : (
-                <p className="text-center text-[11px] text-muted-foreground">
-                  Need to leave? Ask the host to release your seat.
-                </p>
-              )}
+            <div className="inline-flex h-11 w-full items-center justify-center rounded-full bg-jade-accent px-4 text-sm font-semibold text-white">
+              ✓ Seat #{meet.yourBooking?.seatNumber} confirmed
             </div>
           ) : youPending && !hostReviewing ? (
             <button

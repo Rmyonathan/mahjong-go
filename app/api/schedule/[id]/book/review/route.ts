@@ -135,10 +135,23 @@ export async function POST(request: Request, { params }: Params) {
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      const confirmedCount = await tx.booking.count({
-        where: { meetId, status: "CONFIRMED" },
-      })
-      if (confirmedCount >= meet.maxSeats) {
+      const [confirmedCount, liveSession] = await Promise.all([
+        tx.booking.count({
+          where: { meetId, status: "CONFIRMED" },
+        }),
+        tx.gameSession.findFirst({
+          where: { meetId, status: "LIVE" },
+          include: { seats: { orderBy: { seatOrder: "asc" } } },
+        }),
+      ])
+
+      const occupiedLiveSeats = liveSession
+        ? liveSession.seats.filter(
+            (s) => s.userId != null || s.guestName !== "Retired (Open)",
+          ).length
+        : 0
+
+      if (Math.max(confirmedCount, occupiedLiveSeats) >= meet.maxSeats) {
         throw new Error("FULL")
       }
 
@@ -158,25 +171,53 @@ export async function POST(request: Request, { params }: Params) {
         },
       })
 
+      let joinedLiveSeatId: string | null = null
+      if (liveSession) {
+        const openSeat = liveSession.seats.find(
+          (s) => s.userId == null && s.guestName === "Retired (Open)",
+        )
+        if (openSeat) {
+          joinedLiveSeatId = openSeat.id
+          await tx.sessionSeat.update({
+            where: { id: openSeat.id },
+            data: {
+              userId: booking.userId,
+              guestName: null,
+              netPoints: 0,
+              wins: 0,
+              selfDraws: 0,
+              dealtInCount: 0,
+            },
+          })
+        }
+      }
+
+      const nextOccupied = Math.max(confirmedCount + 1, occupiedLiveSeats)
       await tx.meet.update({
         where: { id: meetId },
         data: {
-          status: syncMeetStatus(
-            confirmedCount + 1,
-            meet.maxSeats,
-            meet.status,
-          ),
+          status: syncMeetStatus(nextOccupied, meet.maxSeats, meet.status),
         },
       })
 
-      return next
+      return { next, liveSessionId: liveSession?.id ?? null, joinedLiveSeatId }
     })
 
-    return NextResponse.json({ booking: updated })
+    if (updated.liveSessionId && updated.joinedLiveSeatId) {
+      const { markSeatResetAtCurrentHand } = await import(
+        "@/lib/session/manage"
+      )
+      await markSeatResetAtCurrentHand(
+        updated.liveSessionId,
+        updated.joinedLiveSeatId,
+      )
+    }
+
+    return NextResponse.json({ booking: updated.next })
   } catch (error) {
     if (error instanceof Error && error.message === "FULL") {
       return NextResponse.json(
-        { error: "Table is full — cannot approve" },
+        { error: "Table is full — wait until a player retires" },
         { status: 409 },
       )
     }

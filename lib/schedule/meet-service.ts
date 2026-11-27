@@ -229,6 +229,12 @@ export function serializeMeet(
     confirmedCount: effectiveConfirmedCount,
     pendingCount: pending.length,
     waitlistCount: waitlist.length,
+    waitlistNames: waitlist.map(
+      (booking) =>
+        booking.user.player?.nickname ??
+        booking.user.name.split(" ")[0] ??
+        booking.user.name,
+    ),
     seatsFilled: effectiveConfirmedCount,
     isFull: effectiveConfirmedCount >= meet.maxSeats || meet.status === "FULL",
     earlyBirdActive: Boolean(

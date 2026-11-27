@@ -70,10 +70,10 @@ const DRAGON_IDS: { id: string; name: string }[] = [
 ];
 
 const WIND_LABEL_ID: Record<string, string> = {
-  East: "Timur",
-  South: "Selatan",
-  West: "Barat",
-  North: "Utara",
+  East: "Tong",
+  South: "Nan",
+  West: "Xi",
+  North: "Pei",
 };
 
 const SUIT_LABEL_ID: Record<SuitType, string> = {
@@ -377,8 +377,16 @@ export function calculateHandScore(
   const stdCounts = countById(standardTiles)
 
   // -------------------------------------------------------------------------
-  // Ubin Bunga & Musim — Jade HK §5 (Bunga Sendiri / Bunga Meja saja)
+  // Ubin Bunga & Musim — Jade HK §5 (Bunga Sendiri / Bunga Meja / No Flower)
   // -------------------------------------------------------------------------
+  if (useHkosFaan && bonusTiles.length === 0 && standardTiles.length > 0) {
+    flowerPatterns.push({
+      key: "no-flower",
+      name: "No Flower",
+      fan: 1,
+      description: "Tidak ada ubin Bunga/Musim sama sekali (+1 Faan).",
+    })
+  }
   for (const tile of bonusTiles) {
     if (tile.category !== "bonus") continue
     if (tile.seat === seat) {
@@ -617,7 +625,7 @@ export function calculateHandScore(
       })
     }
 
-    // --- Jade / Ruby / Pearl Dragon — Naga (pasang/Pung) + suit eksklusif, tanpa honor lain ---
+    // --- Jade / Ruby / Pearl Dragon — Pung/Kong Naga + sisanya serba suit (boleh Chi/Pung), tanpa honor lain ---
     if (
       isDragonSuitWin(
         standardTiles,
@@ -632,7 +640,7 @@ export function calculateHandScore(
         name: "Jade Dragon",
         fan: 10,
         description:
-          "Naga Hijau (pasang/Pung) + sisanya serba Bambu. Tanpa Angin/Naga lain. (Limit Hand)",
+          "Pung/Kong Naga Hijau + sisanya serba Bambu (boleh Chi/Pung). Tanpa Angin/Naga lain. (Limit Hand)",
       })
     }
     if (
@@ -649,7 +657,7 @@ export function calculateHandScore(
         name: "Ruby Dragon",
         fan: 10,
         description:
-          "Naga Merah (pasang/Pung) + sisanya serba Karakter. Tanpa Angin/Naga lain. (Limit Hand)",
+          "Pung/Kong Naga Merah + sisanya serba Karakter (boleh Chi/Pung). Tanpa Angin/Naga lain. (Limit Hand)",
       })
     }
     if (
@@ -666,7 +674,7 @@ export function calculateHandScore(
         name: "Pearl Dragon",
         fan: 10,
         description:
-          "Naga Putih (pasang/Pung) + sisanya serba Bulatan. Tanpa Angin/Naga lain. (Limit Hand)",
+          "Pung/Kong Naga Putih + sisanya serba Bulatan (boleh Chi/Pung). Tanpa Angin/Naga lain. (Limit Hand)",
       })
     }
 

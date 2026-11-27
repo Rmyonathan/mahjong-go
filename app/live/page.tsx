@@ -125,14 +125,11 @@ export default function LiveTablesPage() {
     setInviteBusyId(invite.id)
     setError(null)
     try {
-      const response = await fetch(
-        `/api/session-invites/${encodeURIComponent(invite.id)}/respond`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        },
-      )
+      const response = await fetch("/api/session-invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId: invite.id, action }),
+      })
       const data = (await response.json().catch(() => ({}))) as {
         sessionId?: string
         error?: string

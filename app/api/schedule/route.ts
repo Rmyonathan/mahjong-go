@@ -171,6 +171,21 @@ export async function POST(request: Request) {
     }
   }
 
+  // Non-admin table creators automatically join their own table as Seat #1
+  if (!isClub) {
+    const { makeCheckInCode } = await import("@/lib/schedule/meet-service")
+    await prisma.booking.create({
+      data: {
+        meetId: meet.id,
+        userId: host.id,
+        status: "CONFIRMED",
+        seatNumber: 1,
+        paymentMethod: feeIdr > 0 ? "QRIS" : null,
+        checkInCode: makeCheckInCode(meet.id),
+      },
+    })
+  }
+
   return NextResponse.json(
     {
       meet: {

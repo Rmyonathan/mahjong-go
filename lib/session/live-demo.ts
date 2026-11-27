@@ -26,10 +26,10 @@ export const WIND_META: Record<
   LiveWind,
   { label: string; badge: string; order: number }
 > = {
-  east: { label: "East", badge: "東", order: 0 },
-  south: { label: "South", badge: "南", order: 1 },
-  west: { label: "West", badge: "西", order: 2 },
-  north: { label: "North", badge: "北", order: 3 },
+  east: { label: "Tong", badge: "東", order: 0 },
+  south: { label: "Nan", badge: "南", order: 1 },
+  west: { label: "Xi", badge: "西", order: 2 },
+  north: { label: "Pei", badge: "北", order: 3 },
 }
 
 export const QUICK_SELECT_PLAYERS = [
@@ -152,14 +152,22 @@ export interface LiveHand {
   id: string
   handNo: number
   winnerSeatIndex: number
+  winnerName?: string
   method: WinMethod
   dealtBySeatIndex: number | null
+  dealtName?: string
+  seatNames?: string[]
   tileIds: string[]
   winningTileId: string
   combos: { label: string; fan: number }[]
   points: number
   deltas: number[]
   demoHandId?: string
+}
+
+export interface RetiredRaceSeries {
+  label: string
+  values: Array<number | null>
 }
 
 export interface LiveSession {
@@ -173,6 +181,7 @@ export interface LiveSession {
   hands: LiveHand[]
   /** Running totals per seat, index 0 = start */
   race: number[][]
+  retiredRaces?: RetiredRaceSeries[]
   startedAt: string
   endedAt: string | null
   status: "live" | "finished"

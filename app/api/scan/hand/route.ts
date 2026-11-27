@@ -27,18 +27,15 @@ Omit rows/n when unused. ids: dots-1..9|bamboo-1..9|characters-1..9|wind-east|so
 const SCAN_USER_PROMPT = `List EVERY tile L→R (bonus above + 14 hand). Do not stop early.
 Per tile: short count, id. Suit: n=1–9. Bamboo sticks: rows=[shafts per row top→bottom], n=sum(rows). Bird→bamboo-1. Honors: id only. Bonus: count MUST be ink+num like "red-2" or "black-4", plus id.
 
+Dots: count every circle (6-dot=2+4=6 circles, NOT 4-dot/7-dot; 4-dot=2×2; 7-dot=3 slanted+4; 1-dot=one big circle).
+Winds (ignore 90°/180° tile rotation): 東=east(box+center spine), 南=south(open-bottom arch+cross inside—even upside-down, NOT west), 西=west(closed box+2 inner legs), 北=north(back-to-back).
+
 Bamboo COLOR: any RED stick → not bamboo-6. 1r4g→5, 1r6g→7, 3r6g→9 (center column often red). Write count as 3r6g etc. All-green 2×3→bamboo-6.
+Bamboo 2 vs 8: 2=ONLY two parallel sticks || (rows=[1,1]/[2]); 8=eight sticks in W/M zigzag (rows=[3,2,3]/[2,2,2,2]). Also [3,3,3]→9, [2,1,2]→5.
 
-Bamboo 2 vs 8 (do NOT confuse):
-- bamboo-2: ONLY two parallel straight sticks (looks like ||). rows=[1,1] or [2].
-- bamboo-8: eight sticks in a W or M shape (two peaks / zigzag), NOT two lines. Often rows=[3,2,3] or [2,2,2,2]. If you see W/M → bamboo-8.
-
-Also: [3,3,3]→9, [2,1,2]→5. dots-1=one circle. flower-bamboo=plant not bamboo-N.
-
-BONUS (this set — do NOT use HK color defaults):
-- RED ink numeral → flower-* . BLACK or BLUE ink numeral → season-*.
-- Numeral maps 1:1 (never reverse 2↔4): red-1→flower-plum, red-2→flower-orchid, red-3→flower-chrysanthemum, red-4→flower-bamboo. black/blue-1→season-spring, -2→summer, -3→autumn, -4→winter.
-- Confirm with art: flowers = plant blooms; seasons = season scenes. flower-bamboo = bamboo PLANT.`
+BONUS (do NOT use HK color defaults):
+- RED ink numeral → flower-*; BLACK/BLUE ink → season-*.
+- 1:1 map: red-1→flower-plum, red-2→flower-orchid, red-3→flower-chrysanthemum, red-4→flower-bamboo (bamboo plant). black/blue-1→season-spring, -2→summer, -3→autumn, -4→winter.`
 
 function isTimeoutError(error: unknown) {
   if (!error || typeof error !== "object") return false

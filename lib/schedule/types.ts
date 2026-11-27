@@ -75,6 +75,7 @@ export interface ApiMeet {
   confirmedCount: number
   pendingCount: number
   waitlistCount: number
+  waitlistNames: string[]
   seatsFilled: number
   isFull: boolean
   earlyBirdActive: boolean

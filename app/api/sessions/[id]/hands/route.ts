@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requireUser } from "@/lib/auth"
 import { getPendingSessionInviteSummary } from "@/lib/session/invites"
+import { getSessionManageState } from "@/lib/session/manage"
 import {
   getGameSession,
   logHand,
@@ -39,9 +40,12 @@ export async function POST(
     user.role,
     existing.tournamentTableId,
   )
-  if (!isCaptain && !isAdmin && !tournamentWasit) {
+  const manageState = await getSessionManageState(id)
+  const isDesignatedScanner = manageState.scannerUserIds.includes(user.id)
+
+  if (!isCaptain && !isAdmin && !tournamentWasit && !isDesignatedScanner) {
     return NextResponse.json(
-      { error: "Only the table captain or tournament wasit can log hands" },
+      { error: "Only the table captain, designated scanner, or tournament wasit can log hands" },
       { status: 403 },
     )
   }
@@ -81,8 +85,9 @@ export async function POST(
       )
     }
     const session = await getGameSession(id)
+    const latestManage = await getSessionManageState(id)
     return NextResponse.json({
-      session: session ? serializeSession(session) : null,
+      session: session ? serializeSession(session, latestManage) : null,
     })
   } catch (error) {
     const message =

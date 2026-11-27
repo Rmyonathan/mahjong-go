@@ -77,10 +77,23 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const confirmedCount = await tx.booking.count({
-      where: { meetId, status: "CONFIRMED" },
-    })
-    const isFull = confirmedCount >= meet.maxSeats
+    const [confirmedCount, liveSession] = await Promise.all([
+      tx.booking.count({
+        where: { meetId, status: "CONFIRMED" },
+      }),
+      tx.gameSession.findFirst({
+        where: { meetId, status: "LIVE" },
+        include: { seats: { select: { userId: true, guestName: true } } },
+      }),
+    ])
+    const occupiedLiveSeats = liveSession
+      ? liveSession.seats.filter(
+          (s) => s.userId != null || s.guestName !== "Retired (Open)",
+        ).length
+      : 0
+    const isFull =
+      Math.max(confirmedCount, occupiedLiveSeats) >= meet.maxSeats ||
+      meet.status === "FULL"
     const status = isFull ? "WAITLIST" : "PENDING"
     const paymentMethod: PaymentMethod | null =
       isFull || meet.feeIdr <= 0 ? null : "QRIS"

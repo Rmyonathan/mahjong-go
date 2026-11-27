@@ -117,6 +117,14 @@ export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
     exampleTileIds: ["flower-orchid", "season-summer"],
   }),
   pattern({
+    id: "no-flower",
+    name: "No Flower",
+    points: 1,
+    description:
+      "Menang tanpa ubin Bunga atau Musim sama sekali (+1 Faan).",
+    exampleTileIds: [],
+  }),
+  pattern({
     id: "all-chows",
     name: "All Chi (Ping Hu)",
     points: 1,
@@ -227,7 +235,7 @@ export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
     name: "Jade Dragon",
     points: 10,
     description:
-      "Pung/Kong Fa Cai (發) + sisanya serba Bambu Pong/Kong + pair (tanpa Chi).",
+      "Pung/Kong Fa Cai (發) + sisanya serba Bambu (boleh Chi/Pong/Kong) + pair.",
     exampleTileIds: [
       ...pung("dragon-green"),
       ...pung("bamboo-2"),
@@ -241,7 +249,7 @@ export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
     name: "Ruby Dragon",
     points: 10,
     description:
-      "Pung/Kong Chong (中) + sisanya serba Karakter Pong/Kong + pair (tanpa Chi).",
+      "Pung/Kong Chong (中) + sisanya serba Karakter (boleh Chi/Pong/Kong) + pair.",
     exampleTileIds: [
       ...pung("dragon-red"),
       ...pung("characters-2"),
@@ -255,7 +263,7 @@ export const HOUSE_COMBO_PATTERNS: HouseComboPattern[] = [
     name: "Pearl Dragon",
     points: 10,
     description:
-      "Pung/Kong Pak Phan (白) + sisanya serba Bulat Pong/Kong + pair (tanpa Chi).",
+      "Pung/Kong Pak Phan (白) + sisanya serba Bulat (boleh Chi/Pong/Kong) + pair.",
     exampleTileIds: [
       ...pung("dragon-white"),
       ...pung("dots-2"),

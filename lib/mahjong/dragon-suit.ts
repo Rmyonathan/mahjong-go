@@ -6,7 +6,7 @@
  * - Pearl: Naga Putih + Bulatan saja
  *
  * Tidak boleh ada Angin atau Naga lain (berbeda dari Half Flush biasa).
- * Naga target boleh Pasang (2) atau Pung/Kong (3+).
+ * Naga target harus Pung/Kong (3+), bukan Pasang (2). Sisanya boleh Pung/Kong atau Chi.
  */
 
 import type { SuitType, Tile } from "./types"
@@ -91,13 +91,13 @@ export function analyzeDragonSuitComposition(
 }
 
 /**
- * Deteksi menang — semua ubin Naga target + suit; Naga sebagai Pasang atau Pung/Kong.
+ * Deteksi menang — semua ubin Naga target + suit; Naga harus Pung/Kong (3+).
  */
 export function isDragonSuitWin(
   standardTiles: Tile[],
   dragonId: string,
   suit: SuitType,
-  pairId: string,
+  _pairId: string,
   pungLikeIds: string[],
 ): boolean {
   const { dragonCount, forbiddenCount } = analyzeDragonSuitComposition(
@@ -105,11 +105,9 @@ export function isDragonSuitWin(
     dragonId,
     suit,
   )
-  if (forbiddenCount > 0 || dragonCount < 2) return false
+  if (forbiddenCount > 0 || dragonCount < 3) return false
 
-  const dragonInMeld = pungLikeIds.includes(dragonId)
-  const dragonIsPair = pairId === dragonId
-  return dragonInMeld || dragonIsPair
+  return pungLikeIds.includes(dragonId)
 }
 
 export function parseDragonSuitTarget(

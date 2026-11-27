@@ -219,7 +219,7 @@ export async function respondToSeatInvite(input: {
       FROM "SessionSeatInvite" i
       INNER JOIN "GameSession" gs ON gs."id" = i."sessionId"
       WHERE i."id" = ${input.inviteId}
-      FOR UPDATE
+      FOR UPDATE OF i
     `
 
     const invite = rows[0] as

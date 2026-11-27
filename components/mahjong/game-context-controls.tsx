@@ -11,10 +11,10 @@ import {
 import { cn } from "@/lib/utils"
 
 const WIND_OPTIONS: { value: Wind; label: string }[] = [
-  { value: "East", label: "Timur" },
-  { value: "South", label: "Selatan" },
-  { value: "West", label: "Barat" },
-  { value: "North", label: "Utara" },
+  { value: "East", label: "Tong" },
+  { value: "South", label: "Nan" },
+  { value: "West", label: "Xi" },
+  { value: "North", label: "Pei" },
 ]
 
 interface GameContextControlsProps {

@@ -63,20 +63,20 @@ function TableInviteBannerInner() {
     setBusyId(invite.id)
     setError(null)
     try {
-      const response = await fetch(
-        `/api/session-invites/${encodeURIComponent(invite.id)}/respond`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        },
-      )
+      const response = await fetch("/api/session-invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId: invite.id, action }),
+      })
       const data = (await response.json().catch(() => ({}))) as {
         ok?: boolean
         sessionId?: string
         error?: string
       }
       if (!response.ok) {
+        if (response.status === 404 || response.status === 400) {
+          setInvites((prev) => prev.filter((item) => item.id !== invite.id))
+        }
         setError(data.error ?? "Could not update invite")
         return
       }
